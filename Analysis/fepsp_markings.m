@@ -267,7 +267,7 @@ ax = findobj(marking_fig,'type','axes','-depth',1);
 ax = fepsp_graphics(ax);          % set graphics
 
 hold(ax,'on')
-traces_plot(end+1) = plot(protocol_info.Tstamps,squeeze(avg_traces(1,end,:)),'--b','LineWidth',2);
+traces_plot(end+1) = plot(protocol_info.Tstamps,squeeze(avg_traces(1,intens_order(end),:)),'--b','LineWidth',2);
 traces_plot(end).DataTipTemplate.DataTipRows(end+1) = dataTipTextRow('Avg Trace','');
 
 % make figure callbacks
@@ -836,11 +836,10 @@ traces                  = marking_fig.UserData.fepsp_data.traces;
 base_path = marking_fig.UserData.base_path;
 [~,base_name] = fileparts(base_path);
 marking_file = [base_path filesep base_name '_fepsp_markings.mat'];
-traces_file = [base_path filesep base_name '_fepsp_traces.mat'];
 
 % save
 save(marking_file, 'markings', 'traces')
-save(traces_file, 'traces', 'traces')
+
 
 end
 

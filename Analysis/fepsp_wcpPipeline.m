@@ -1,21 +1,30 @@
-function fepsp_wcpPipeline(varargin)
-
-% organizes recordings from wcp. assumes all .wcp files are in basepath and
-% are named with unique numbers as suffixes (e.g. "xxx_034"). user selects
-% specific files by specifying the last 2-3 digits of the filename. the
-% function load the data, organizes it in a separate folder and calls the
-% slutsky_fepsp functions.
+function lfp = fepsp_wcpPipeline(varargin)
+% Read wcp files and pass them through the whole fepsp pipline.
 % 
 % INPUT
-%   basepath        char. dir with .wcp files
-%   wcpfiles        wcp filenames to analyze. can be numeric (last digits)
-%                   or a cell array of chars with the filenames not including
-%                   the extension .wcp. for example {'xxx.034'}
-%   fepsp_protocol  char. can be 'freerun', 'io', or 'stp'
-%   recname         char. name of output folder
-%   fsOut           numeric. requested sampling frequency. if empty will
-%                   not downsample
-%   intens          numeric. intensity values of stimulations [uA]
+%   basepath        char. dir with .wcp files.
+%                   Defualt: pwd.
+%   wcpfiles        wcp filenames to analyze. 
+%                   string vector or a cell array of chars.
+%                   Defualt: pick by uigetfile.
+%   fepsp_protocol  char. see 'fepsp_getProtocol.m'.
+%                   Defualt: 'io'.
+%   intens          numeric vector. intensity values of stimulations [uA]
+%                   Defualt: 1 to number of files.
+%   out_name        Text scalar, suffix to add to saved lfp files & figures saved.
+%                   Defualt: ''.
+%   fsOut           numeric. requested sampling frequency. if empty will not downsample.
+%                   Defualt: 5000.
+%   cf              numeric, cut off frequency for sync filter (will filter
+%                   each trace sepertly, may be bad filtering due to very short data...).
+%                   If empty won't filter.
+%                   Defualt: [].
+%   max_jitter      numeric, see 'fepsp_markings.m'.
+%                   Defualt: 0.5.
+%   plot_summary    logical, to plot & save summary plot or not. Does not
+%                   support stability. See 'fepsp_summaryPlot.m'.
+%                   Defualt: true.
+%   
 % 
 % DEPENDENCIES
 %   getLFP
@@ -24,6 +33,7 @@ function fepsp_wcpPipeline(varargin)
 %   import_wcp (external)
 %   iosr.dsp
 % 
+% 14 Jun 22 LdM (mostly cut & rearrange of legacy function)
 % 17 mar 22 LH
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -33,47 +43,37 @@ p = inputParser;
 addOptional(p, 'basepath', pwd);
 addOptional(p, 'wcpfiles', []);
 addOptional(p, 'fepsp_protocol', 'io', @ischar);
-addOptional(p, 'recname', '', @ischar);
-addOptional(p, 'fsOut', 1250, @isnumeric);
 addOptional(p, 'intens', [], @isnumeric);
+addOptional(p, 'out_name', '', @mustBeTextScalar);
+addOptional(p, 'fsOut', 5000, @isnumeric);
+addOptional(p, 'cf', [], @isnumeric);
+addOptional(p, 'max_jitter', 0.5, @isnumeric);
+addOptional(p, 'plot_summary', true, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
 
 parse(p, varargin{:})
 basepath        = p.Results.basepath;
 wcpfiles        = p.Results.wcpfiles;
 fepsp_protocol  = p.Results.fepsp_protocol;
-recname         = p.Results.recname;
-fsOut           = p.Results.fsOut;
 intens          = p.Results.intens;
+out_name        = p.Results.out_name;
+fsOut           = p.Results.fsOut;
+cf              = p.Results.cf;
+max_jitter      = p.Results.max_jitter;
+plot_summary    = p.Results.plot_summary;
+
+if isempty(wcpfiles)
+    [files_names,files_paths] = uigetfile(join([basepath,filesep,'*.wcp'],''));
+    wcpfiles = fullfile(files_paths,files_names);
+end
 
 if isempty(intens)
     intens = 1 : length(wcpfiles);
 end
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % prep data
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% find requested .wcp files
-cd(basepath)
-rawfiles = dir('*.wcp');
-rawnames = {rawfiles.name};
-rawsuffix = cellfun(@(x) x(end - 6 : end - 4) + ".wcp", rawnames, 'uni', false);
-
-% get all .wcp files in folder if non selected
-if isempty(wcpfiles)
-    wcpfiles = rawnames;
-end
-nfiles = length(wcpfiles);
-
-% convert selected numbers to wcp filenames
-if isnumeric(wcpfiles)
-    for ifile = 1 : nfiles
-        fileidx = contains(rawnames, rawsuffix{wcpfiles(ifile)});
-        [~, basename{ifile}] = fileparts(rawfiles(fileidx).name);
-    end
-else
-    basename = wcpfiles;
-end
 
 % organize protocol info
 protocol_info = fepsp_getProtocol('protocol_id', fepsp_protocol);
@@ -88,12 +88,19 @@ filelength = nan(1, nfiles);
 
 % load and organize data
 for ifile = 1 : nfiles
+    
+    % remove extention if any
+    if contains(wcpfiles{ifile},'.wcp')
+        basename = extractBefore(wcpfiles{ifile},'.wcp');
+    else
+        basename = wcpfiles{ifile};
+    end
 
     % load lfp
-    lfp = getLFP('basepath', basepath, 'basename', basename{ifile},...
+    lfp = getLFP('basepath', basepath, 'basename', basename,...
         'ch', 1, 'chavg', {},...
-        'fs', [], 'interval', [0 inf], 'extension', 'wcp',...
-        'savevar', false, 'forceL', true, 'cf', []);
+        'fs', fsOut, 'interval', [0 inf], 'extension', 'wcp',...
+        'savevar', false, 'forceL', true, 'cf', cf);
     fs = lfp.fs;
     [nsamps, ntraces] = size(lfp.data);
 
@@ -113,127 +120,89 @@ for ifile = 1 : nfiles
             cntdata = [cntdata; tmpdata];
             filelength(ifile) = length(tmpdata);            
 
-        case {'io', 'stp', 'stp5'}
+        otherwise
             % cat data and create stim indices
             cntdata = [cntdata; lfp.data(:)];
             stim_locs{ifile} = stim_start + [stim_times(1) * fs :...
                 size(lfp.data, 1) : length(lfp.data(:))];
             stim_start = length(cntdata);
-
     end
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% filter and downsample
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% filter params
-import iosr.dsp.*       % import sync filter toolbox
-cf = 450;               % low pass cutoff
-fsIn = fs; 
-if isempty(fsOut)
-    fsOut = fsIn;
+% find duplicated intens, and merge them
+[unique_intens, ~, ic] = unique(intens,'stable');
+idx_2_del = [];
+for iDup = unique(ic)'
+    dup_idx = find(ic == iDup);
+    if numel(dup_idx) > 1
+        fprintf('Merging [%s] due to same intensity\n',join(wcpfiles(dup_idx),', '))
+        stim_locs{dup_idx(1)} = [stim_locs{dup_idx}];
+        wcpfiles(dup_idx(1)) = join(wcpfiles(dup_idx)," + ");
+        idx_2_del = [idx_2_del dup_idx(2:end)]; %#ok<AGROW> Very Small growth
+    end
 end
-fsRatio = (fsIn / fsOut);
-if cf > fsOut / 2
-    warning('low pass cutoff beyond nyquist')
-end
-filtRatio = cf / (fsIn / 2);
-ntbuff = 525;           % default filter size in iosr toolbox
-if mod(ntbuff, fsRatio) ~= 0
-    ntbuff = round(ntbuff + fsRatio - mod(ntbuff, fsRatio));
-end
-
-% do the filtering
-lfp.data = [iosr.dsp.sincFilter(cntdata, filtRatio)]';
-
-% downsample
-if fsRatio ~= 1
-    lfp.data = real(lfp.data(:, fsRatio : fsRatio :...
-        length(lfp.data) - ntbuff));
-end
-lfp.fs = fsOut;
-lfp.filelength = filelength / fsIn;       % [s]
-
-% downsample stimulus indices
-stim_locs = cellfun(@(x) round(x / fsRatio), stim_locs, 'uni', false);
-
+stim_locs(idx_2_del) = [];
+wcpfiles(idx_2_del) = [];
+intens = unique_intens;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % organize lfp struct and save
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % add info to lfp struct
-lfp.files = wcpfiles;
-lfp.fepsp_protocol = fepsp_protocol;
-lfp.intens = intens;
+lfp.files       = wcpfiles;
+lfp.protocol_id = fepsp_protocol;
+lfp.intens      = intens;
+lfp.stim_locs   = stim_locs;
+lfp.cf          = cf;
+lfp.max_jitter  = max_jitter;
+lfp.slope_area  = [0.2 0.8];
+lfp.data_in     = cntdata;
 
 % save
-recdir = fullfile(basepath, recname);
+recdir = fullfile(basepath);
+warning('off','MATLAB:MKDIR:DirectoryExists')
 mkdir(recdir);
-save(fullfile(recdir, [recname, '.lfp.mat']), 'lfp')
-
-% debugging for cntdata
-dbflag = false;
-if dbflag
-    fh = figure;
-    plot([1 : length(cntdata)] / fsRatio, cntdata)
-    hold on
-    plot([[stim_locs{:}]; [stim_locs{:}]], ylim, '--k')
-end
+warning('on','MATLAB:MKDIR:DirectoryExists')
+save(fullfile(recdir, [out_name, '.lfp.mat']), 'lfp')
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % continue processing
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-basepath = recdir;
-cd(basepath)
-[~, basename] = fileparts(basepath);
-fs = lfp.fs;
+% orginaze traces
+lfp.traces  = fepsp_org2traces(lfp,"graphics",false,"save_var",false);
 
-% fepsp --------------------------------------------------------------------
-
-% organize in fepsp cell format
-[traces] = fepsp_org2traces('data_in', lfp.data',...
-    'basepath', basepath, 'fs', fs, 'protocol_id', fepsp_protocol,...
-    'stim_locs', stim_locs);
-
-% mark traces via gui
-marking_win = fepsp_markings("traces", traces, "fs", fs,...
-    "protocol_id", fepsp_protocol, "base_path", basepath,...
-    "intens", intens, "traces_Xlimit", [], "traces_Ylimit", [],...
-    "dt", 2, "max_jitter", 0.5, "fast_mark", false);
-
+% mark points
+marking_win = fepsp_markings(lfp);
 % load markings and updated traces
 waitfor(marking_win)
-load([basename, '_fepsp_markings.mat'], "markings")
-load([basename, '_fepsp_traces.mat'], "traces")
+[~, basename] = fileparts(basepath);
+marking_files = fullfile(basepath,[basename '_fepsp_markings.mat']);
+load(marking_files, "markings");
+lfp.markings = markings;
+load(marking_files, "traces");
+lfp.traces_pre_del  = lfp.traces;
+lfp.traces  = traces;
+delete(marking_files)
 
-% analyze traces according to the manual markings
-results = fepsp_analyse("traces", traces, "fs", fs,...
-    "protocol_id", fepsp_protocol, "markings", markings,...
-    "base_path", basepath, "save_var", true, "slope_area", [0.2 0.9]);
+% calculate results from points
+lfp.results = fepsp_analyse(lfp,"save_var",false);
 
-% step 4        dispalys the results
-analysed_fepsp = fepsp_summaryPlot("traces", traces, "fs", fs,...
-    "protocol_id", fepsp_protocol, "markings", markings, "results", results,...
-    "base_path", basepath, "intens", intens);
+% save
+recdir = fullfile(basepath);
+warning('off','MATLAB:MKDIR:DirectoryExists')
+mkdir(recdir);
+warning('on','MATLAB:MKDIR:DirectoryExists')
+save(fullfile(recdir, [out_name, '.lfp.mat']), 'lfp')
 
-
-% freerun -----------------------------------------------------------------
-
-if strcmp(fepsp_protocol, 'freerun')
-    % spectrogram
-    [s, tstamps, freq] = specBand('basepath', basepath, 'sig', lfp.data,...
-        'fs', lfp.fs, 'graphics', true, 'logfreq', true);
-    yLimit = ylim;
-    hold on
-    tidx = [cumsum(lfp.filelength) / 60 / 60]';
-    tidx = [1; tidx(1 : end - 1)];
-    plot([tidx, tidx], ylim, '--k', 'LineWidth', 2)
-    hold on
-    text(tidx, repmat(yLimit(2) + 0.01 * yLimit(2), length(tidx), 1), string(wcpfiles))
-end
-
+% create summary plots
+if plot_summary
+    warning('off','MATLAB:MKDIR:DirectoryExists')
+    fepsp_summaryPlot(lfp);
+    warning('on','MATLAB:MKDIR:DirectoryExists')
+    saved_name = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_fepsp_results.tif', basename));
+    new_name   = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_%s_fepsp_results.tif', basename, out_name));
+    movefile(saved_name,new_name);
 end
 
 % EOF

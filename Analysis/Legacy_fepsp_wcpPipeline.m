@@ -1,4 +1,4 @@
-function fepsp_wcpPipeline(varargin)
+function Legacy_fepsp_wcpPipeline(varargin)
 
 % organizes recordings from wcp. assumes all .wcp files are in basepath and
 % are named with unique numbers as suffixes (e.g. "xxx_034"). user selects
@@ -173,11 +173,13 @@ mkdir(recdir);
 save(fullfile(recdir, [recname, '.lfp.mat']), 'lfp')
 
 % debugging for cntdata
-fh = figure;
-plot([cntdata)
-hold on
-plot([stim_locs{1}; stim_locs{1}], ylim, '--k')
-
+dbflag = true;
+if dbflag
+    fh = figure;
+    plot([1 : length(cntdata)] / fsRatio, cntdata)
+    hold on
+    plot([[stim_locs{:}]; [stim_locs{:}]], ylim, '--k')
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % continue processing

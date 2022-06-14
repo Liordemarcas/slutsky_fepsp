@@ -12,7 +12,7 @@ if strcmp(hndlType, 'axes')
     set(hndl, 'TickLength', [0 0])
     set(hndl, 'TitleFontSizeMultiplier', 1.4)
     set(hndl, 'LabelFontSizeMultiplier', 1.2)
-    set(hndl, 'FontName', 'FixedWidth')
+    set(hndl, 'FontName', 'Arial')
     
 elseif strcmp(hndlType, 'figure')
     set(hndl, 'units', 'normalized')

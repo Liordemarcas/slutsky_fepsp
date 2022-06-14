@@ -122,7 +122,7 @@ for iChan = size(traces, 1) : -1 : 1
     % open figure 
     sumPlot(iChan) = figure();
     sumPlot(iChan) = fepsp_graphics(sumPlot(iChan));          % set graphics
-    sgtitle(sprintf('Channel %d', iChan),...
+    sgtitle(sprintf('Channel %d - %s', iChan,upper(protocol_info.protocol_id)),...
         'FontSize', 28, 'FontWeight', 'bold', 'FontName', 'FixedWidth')
     
     if nStim > 1
@@ -140,6 +140,9 @@ for iChan = size(traces, 1) : -1 : 1
         traces(iChan, :), 'UniformOutput', false));
     
     % plot and change data tips
+    if nIntens > 1
+        colororder(green_magenta_Cmap(nIntens))
+    end
     traces_avg_h = plot(protocol_info.Tstamps, traces_avg, 'LineWidth', 1);
     for iIntens = 1 : nIntens
         traces_avg_h(iIntens).Tag = num2str(intens(iIntens));
@@ -167,7 +170,7 @@ for iChan = size(traces, 1) : -1 : 1
             loop_slope_window = sort(slope_window_avg{iChan, iIntens}(:, iStim)); 
             slope_area_mark(iIntens) =...
                 plot(protocol_info.Tstamps(loop_slope_window(1) : loop_slope_window(2)),...
-                traces_avg(loop_slope_window(1) : loop_slope_window(2), iIntens), 'r', 'LineWidth', 3);
+                traces_avg(loop_slope_window(1) : loop_slope_window(2), iIntens), 'c', 'LineWidth', 3);
             % make transparent
             slope_area_mark(iIntens).Color(4) = 0.5;
             % remove from legend
@@ -227,7 +230,7 @@ for iChan = size(traces, 1) : -1 : 1
             boxplot(cat_data(:,3:end));
             
             % colour boxplots by type
-            colors = repmat({'b','r'},1,nStim);
+            colors = repmat({'m','g'},1,nStim);
             box_edges = findobj(loop_subplot,'Tag','Box');
             for iBox = (nStim*2-2):-1:1
                 color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),colors{iBox},'FaceAlpha',.5,'PickableParts','none');
@@ -241,6 +244,7 @@ for iChan = size(traces, 1) : -1 : 1
             % axis labels & title       
             xlabel('Number of Stimulation [#]')
             ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
+            text(max(xlim()).*0.95,max(ylim()).*0.90,sprintf('\\bf{%guA}',intens(iIntens)))
             legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
             loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
         end
@@ -288,7 +292,9 @@ end
 
 % save
 if saveFig
-   
+    fprintf(['This is the time to make edits (such as moving the legends) before figure export.'...
+        '\ncontinure running the code (by F5) ones you are ready to export!\n'])
+    keyboard
     basepath = pwd;
     [~, basename] = fileparts(basepath);
     figpath = fullfile(basepath, 'graphics', 'fepsp');
