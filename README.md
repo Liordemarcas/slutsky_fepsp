@@ -2,7 +2,8 @@
 I put here few changes that I deemed comfortable.
 This fork is untest on any data but my own, and even may contain spelling errors. use it at your own risk! 
 
-
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+__________________________________________________________________________________________________________________________________________________________
 
 # Welcome to the Slutsky Lab fEPSP Repository!
 
