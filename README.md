@@ -1,3 +1,9 @@
+# This is a Fork of: https://github.com/leoreh/slutsky_fepsp
+I put here few changes that I deemed comfortable.
+This fork is untest on any data but my own, and even may contain spelling errors. use it at your own risk! 
+
+
+
 # Welcome to the Slutsky Lab fEPSP Repository!
 
 Here you will find resources for recording *in vivo* field excitatory post synaptic potentials (fEPSPs) and a MATLAB© based package for analysis of the recorded signals.
