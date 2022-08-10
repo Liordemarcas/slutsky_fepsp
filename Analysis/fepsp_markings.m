@@ -60,6 +60,11 @@ function marking_fig = fepsp_markings(varargin)
 %                 the precise points of end / start will still be within
 %                 +/- max_jitter of the manual selection. 
 %                 Default: false.
+%   hold_dt     - logical flag. If true, mark bounderies will have a
+%                 fixed time distance between them (before jitter!). 
+%                 Time can be changed in the GUI, defualts at 5ms. 
+%                 It is recommended to use this option with max_jitter = 0.
+%                 Default: false.
 %
 % OUTPUTS:
 %   while gui is open the function will return marking_fig which is a
@@ -113,6 +118,7 @@ p.addParameter('traces_ylim',   [],     @(x) (isnumeric(x) && numel(x)==2) || is
 p.addParameter('dt',            2,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
 p.addParameter('max_jitter',    3,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}));
 p.addParameter('fast_mark',     false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
+p.addParameter('hold_dt',       false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 
 p.parse(varargin{:})
 
@@ -126,6 +132,7 @@ traces_ylim     = sort(p.Results.traces_ylim);
 dt              = p.Results.dt;
 max_jitter      = p.Results.max_jitter;
 fast_mark       = logical(p.Results.fast_mark);
+hold_dt         = logical(p.Results.hold_dt);
 
 % validate intens
 if isempty(intens)
@@ -215,7 +222,7 @@ for iLine = numel(lines_start_pos):-1:1
     % versions. Helps preventing label from "obscuring" traces. To add it simply
     % add this name value parameter presented here to the "drawline" call
 end
-Lis = addlistener(mark_lines,'MovingROI',@line_move_manage); % listener for managing lines movement & label
+Lis = addlistener(mark_lines,'MovingROI',@(obj,evt) line_move_manage(obj,evt,marking_fig)); % listener for managing lines movement & label
 
 % build GUI Buttons & Interactivity:
 
@@ -232,12 +239,18 @@ ch_button.Callback = @(~,~) switch_traces_group(marking_fig,ch_button,intens_but
 save_button = uicontrol(marking_fig,'Style','pushbutton','String','Export Marks','Tooltip','Export Markings','Callback',@(~,~) export_marks(marking_fig));
 % checkbox for fast analysis option
 fast_mark_checkbox = uicontrol(marking_fig,'Style','checkbox','String','Fast Mark','Value',fast_mark);
+% checkbox for fixed dt
+fixed_dt_checkbox = uicontrol(marking_fig,'Style','checkbox','String','Hold dt','Value',hold_dt,'Callback',@(obj,~) enable_fixed_dt(obj.Value,marking_fig));
+% dt 2 hold numeric input box 
+fixed_dt_editbox = uicontrol(marking_fig,'Style','edit','String','5','Tooltip','dt to hold [ms]','Callback',@(obj,~) validate_update_editbox(obj,marking_fig),'UserData','5');
 % fix buttons with too small width
 save_button.Position(3) = 100;
 fast_mark_checkbox.Position(3) = 100;
+fixed_dt_checkbox.Position(3) = 100;
+fixed_dt_editbox.Position(3) = 100;
 % align all button to sit next to each other. If you create any more
 % uicontrols, add them here to avoid manual placements
-align([ch_button, intens_button, save_button, fast_mark_checkbox],'Fixed',5,'bottom')
+align([ch_button, intens_button, save_button, fast_mark_checkbox,fixed_dt_checkbox,fixed_dt_editbox],'Fixed',5,'bottom')
 
 % create context menu to remove or invert traces from it
 cm = uicontextmenu('Callback',@CM_show_nTrace);
@@ -299,9 +312,18 @@ marking_fig.UserData.mark_lines_handles.mark_lines  = mark_lines;
 marking_fig.UserData.last_Ch                        = ch_button.Value;
 marking_fig.UserData.last_intens                    = intens_button.Value;
 marking_fig.UserData.fast_mark_checkbox             = fast_mark_checkbox;
+marking_fig.UserData.fixed_dt_checkbox              = fixed_dt_checkbox;
+marking_fig.UserData.fixed_dt_editbox               = fixed_dt_editbox;
 marking_fig.UserData.intens_order                   = intens_order;
 marking_fig.UserData.traces_ylim                  = traces_ylim;
 marking_fig.UserData.base_path                    = base_path;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% final touches
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% update hold dt if needed
+enable_fixed_dt(hold_dt,marking_fig);
 
 end
 
@@ -860,15 +882,18 @@ delete(marking_fig)
 end
 
 
-function line_move_manage(obj,evt)
+function line_move_manage(obj,evt,marking_fig)
 % function for managing lines movement.
 % change the time written in lineROI label when moving it.
 % prevent moving the lines along the Y axis.
+% if fixed_dt_checkbox is checked, move the appropriate line to keep the dt.
 %
 % INPUT:
 %   obj         - lineROI object that generated the event "MovingROI".
 %   evt         - "MovingROI" event, generated in response to
 %                 user moving the lineROI.
+%   marking_fig - figure scalar, window of fepsp_markings.Needed
+%                 mainly for everything saved under UserData.
 
 % get the new position of the lineROI
 XPos = evt.CurrentPosition(1);
@@ -878,7 +903,104 @@ obj.Label = [obj.Label(1:(find(obj.Label == '='))), sprintf('%.1f',XPos)];
 % prevent moving on the Y axis, by restoring previous position
 obj.Position(:,2) = evt.PreviousPosition(:,2);
 
+% deal with dt holding
+if marking_fig.UserData.fixed_dt_checkbox.Value
+    update_connected_line(obj,marking_fig)
 end
+
+end
+
+
+function update_connected_line(reference_line,marking_fig)
+% move the connected line so the dt from the reference line will be constant.
+%
+% INPUT:
+%   reference_line
+%               - lineROI object, the connected line will be position
+%                 relatively to its location.
+%   marking_fig - figure scalar, window of fepsp_markings. Needed
+%                 mainly for everything saved under UserData.
+
+% find the connected line. Note that this only work when there are only
+% 2 lines - start (S) and peak (P).
+line_tag = regexp(reference_line.Label,'\d*[S,P]','match');
+connected_tag = replace(line_tag,["S","P"],["P","S"]);
+connected_log = contains({marking_fig.UserData.mark_lines_handles.mark_lines.Label},connected_tag);
+connected_line = marking_fig.UserData.mark_lines_handles.mark_lines(connected_log);
+
+% get dt range 2 hold
+dt2hold = str2double(marking_fig.UserData.fixed_dt_editbox.String);
+
+% find connected line new distance
+if connected_tag{1}(end) == 'S'
+    % if I moved the "peak" line, "start" should follow behind it -
+    % reverse dt factor
+    dt2hold = -dt2hold;
+end
+connected_pos = reference_line.Position(1,1) + dt2hold;
+
+% update connected line pos & label
+connected_line.Position(:,1) = connected_pos;
+connected_line.Label = [connected_line.Label(1:(find(connected_line.Label == '='))), sprintf('%.1f',connected_pos)];
+end
+
+
+function enable_fixed_dt(checkbox_Value,marking_fig)
+% Simple loop to place all lines inside dt next to their "start", only when
+% fixed_dt_checkbox is checked
+%
+% INPUT:
+%   checkbox_Value
+%               - logical flag, fixed_dt_checkbox state, only move the lines to position if true
+%   marking_fig - figure scalar, window of fepsp_markings. Needed
+%                 mainly for everything saved under UserData.
+
+if checkbox_Value
+    % if checkbox is checked, make sure editbox is enable, then update all
+    % lines for hold dt
+
+    marking_fig.UserData.fixed_dt_editbox.Enable = 'on';
+    lines_handles = marking_fig.UserData.mark_lines_handles.mark_lines;
+    for iLine = 1:2:numel(lines_handles)
+        update_connected_line(lines_handles(iLine),marking_fig)
+    end
+
+else
+    % just make sure editbox is disabled
+    
+    marking_fig.UserData.fixed_dt_editbox.Enable = 'off';
+
+end
+
+end
+
+function validate_update_editbox(obj,marking_fig)
+% make sure only positive numbers are in the editbox,
+% and place the lines accordingly
+%
+% INPUT:
+%   obj         - handle to the hold dt editbox.
+%   marking_fig - figure scalar, window of fepsp_markings. Needed
+%                 mainly for everything saved under UserData.
+
+dt_value = str2double(obj.String);
+if isnan(dt_value) || ~isreal(dt_value) || dt_value <= 0
+    % flash red, restore previous value
+    obj.BackgroundColor = 'r';
+    pause(0.1)
+    obj.BackgroundColor = 'w';
+    obj.String = obj.UserData;
+else
+    % flash green, save new value, place lines to match new value
+    obj.BackgroundColor = 'g';
+    pause(0.1)
+    obj.BackgroundColor = 'w';
+    obj.UserData = obj.String;
+    enable_fixed_dt(marking_fig.UserData.fixed_dt_checkbox.Value,marking_fig)
+end
+
+end
+
 
 
 function next_on_enter(evt,marking_fig,Ch_button,intens_button)
@@ -934,5 +1056,6 @@ function CM_show_nTrace(cm,~)
 cm.Children(3).Label = [extractBefore(cm.Children(3).Label,'-') '- ' num2str(cm.UserData.Tag)];
 
 end
+
 
 % EOF

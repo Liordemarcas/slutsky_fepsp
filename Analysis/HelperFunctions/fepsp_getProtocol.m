@@ -215,7 +215,8 @@ if ~isempty(fs)
     
     % create window to display (xlim) - from 1 dt before first stimulus
     % starts until dt after last stimulus ends
-    protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)-protocol_info.stim_times(1)];
+%     protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)-protocol_info.stim_times(1)];
+    protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)];
     
     % get all the sample numbers for the baseline - 1 to dt before first stimulation
     protocol_info.baseline = 1:round((protocol_info.stim_times(1)-dt)* fs / 1000);

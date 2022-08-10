@@ -49,6 +49,7 @@ addOptional(p, 'fsOut', 5000, @isnumeric);
 addOptional(p, 'cf', [], @isnumeric);
 addOptional(p, 'max_jitter', 0.5, @isnumeric);
 addOptional(p, 'plot_summary', true, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
+addOptional(p, 'add_fields',cell.empty([0,2]),@(x) validateattributes(x,{'cell'},{'ncols',2}))
 
 parse(p, varargin{:})
 basepath        = p.Results.basepath;
@@ -60,10 +61,20 @@ fsOut           = p.Results.fsOut;
 cf              = p.Results.cf;
 max_jitter      = p.Results.max_jitter;
 plot_summary    = p.Results.plot_summary;
+add_fields      = p.Results.add_fields;
 
 if isempty(wcpfiles)
-    [files_names,files_paths] = uigetfile(join([basepath,filesep,'*.wcp'],''));
+    [files_names,files_paths] = uigetfile(join([basepath,filesep,'*.wcp'],''),'MultiSelect','on');
+    % return if no file selected
+    if isnumeric(files_names)
+        error('No file selected')
+    end
+
     wcpfiles = fullfile(files_paths,files_names);
+    % fix for uigetfile return 1 file as char
+    if ischar(wcpfiles)
+        wcpfiles = {wcpfiles};
+    end
 end
 
 if isempty(intens)
@@ -135,7 +146,7 @@ idx_2_del = [];
 for iDup = unique(ic)'
     dup_idx = find(ic == iDup);
     if numel(dup_idx) > 1
-        fprintf('Merging [%s] due to same intensity\n',join(wcpfiles(dup_idx),', '))
+        fprintf('Merging [%s] due to same intensity\n',string(join(wcpfiles(dup_idx),', ')))
         stim_locs{dup_idx(1)} = [stim_locs{dup_idx}];
         wcpfiles(dup_idx(1)) = join(wcpfiles(dup_idx)," + ");
         idx_2_del = [idx_2_del dup_idx(2:end)]; %#ok<AGROW> Very Small growth
@@ -157,6 +168,9 @@ lfp.cf          = cf;
 lfp.max_jitter  = max_jitter;
 lfp.slope_area  = [0.2 0.8];
 lfp.data_in     = cntdata;
+for iField = 1:size(add_fields,1)
+    lfp.(add_fields{iField,1}) = add_fields{iField,2};
+end
 
 % save
 recdir = fullfile(basepath);
@@ -200,9 +214,11 @@ if plot_summary
     warning('off','MATLAB:MKDIR:DirectoryExists')
     fepsp_summaryPlot(lfp);
     warning('on','MATLAB:MKDIR:DirectoryExists')
-    saved_name = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_fepsp_results.tif', basename));
-    new_name   = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_%s_fepsp_results.tif', basename, out_name));
-    movefile(saved_name,new_name);
+    if ~isfield(lfp,'saveFig') || lfp.saveFig
+        saved_name = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_fepsp_results.tif', basename));
+        new_name   = fullfile(basepath, 'graphics', 'fepsp',sprintf('%s_%s_fepsp_results.tif', basename, out_name));
+        movefile(saved_name,new_name);
+    end
 end
 
 % EOF
