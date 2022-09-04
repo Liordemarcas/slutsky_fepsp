@@ -19,8 +19,6 @@ function lfp = fepsp_wcpPipeline(varargin)
 %                   each trace sepertly, may be bad filtering due to very short data...).
 %                   If empty won't filter.
 %                   Defualt: [].
-%   max_jitter      numeric, see 'fepsp_markings.m'.
-%                   Defualt: 0.5.
 %   plot_summary    logical, to plot & save summary plot or not. Does not
 %                   support stability. See 'fepsp_summaryPlot.m'.
 %                   Defualt: true.
@@ -165,8 +163,6 @@ lfp.protocol_id = fepsp_protocol;
 lfp.intens      = intens;
 lfp.stim_locs   = stim_locs;
 lfp.cf          = cf;
-lfp.max_jitter  = max_jitter;
-lfp.slope_area  = [0.2 0.8];
 lfp.data_in     = cntdata;
 for iField = 1:size(add_fields,1)
     lfp.(add_fields{iField,1}) = add_fields{iField,2};

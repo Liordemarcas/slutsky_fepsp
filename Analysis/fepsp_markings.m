@@ -52,7 +52,7 @@ function marking_fig = fepsp_markings(varargin)
 %                 within +/- max_jitter of the points selected by the user.
 %                 This jitter compensates for small inaccuracies when
 %                 marking the peak / trough.
-%                 Default: 3.
+%                 Default: 0.5.
 %   fast_mark   - logical flag. If true, user will be asked to
 %                 mark response boundaries for only the largest intensity.
 %                 Those boundaries will be applied to all intensities
@@ -116,7 +116,7 @@ p.addParameter('base_path',     pwd,    @isfolder)
 p.addParameter('traces_xlim',   [],     @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('traces_ylim',   [],     @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('dt',            2,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
-p.addParameter('max_jitter',    3,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}));
+p.addParameter('max_jitter',    0.5,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}));
 p.addParameter('fast_mark',     false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 p.addParameter('hold_dt',       false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 

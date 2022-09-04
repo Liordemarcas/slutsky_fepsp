@@ -11,7 +11,7 @@ function [sumPlot] = fepsp_summaryPlot(varargin)
 %                 more info.
 %   markings    - Struct. See "fepsp_markings.m" for more info.
 %   results     - Struct. See "fepsp_analyse.m" for more info.
-
+%
 % INPUT (optional):
 %   intens      - numeric vector of stimulus intensities used for each
 %                 column of traces. Typically provided in units of uA. if
@@ -123,7 +123,7 @@ for iChan = size(traces, 1) : -1 : 1
     sumPlot(iChan) = figure();
     sumPlot(iChan) = fepsp_graphics(sumPlot(iChan));          % set graphics
     sgtitle(sprintf('Channel %d - %s', iChan,upper(protocol_info.protocol_id)),...
-        'FontSize', 28, 'FontWeight', 'bold', 'FontName', 'FixedWidth')
+        'FontSize', 28, 'FontWeight', 'bold', 'FontName', 'FixedWidth','Interpreter','none')
     
     if nStim > 1
         sb1 = subplot(length(intens) + 1, 1, 1);
@@ -235,17 +235,28 @@ for iChan = size(traces, 1) : -1 : 1
             for iBox = (nStim*2-2):-1:1
                 color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),colors{iBox},'FaceAlpha',.5,'PickableParts','none');
             end
-            
+
+            % add separating lines between stimulations
+            xline(loop_subplot, (2:(nStim-1)) +0.5,'--k','Alpha',0.5)
+
             % finishing touch:
             % fix ticks to be centred between boxes - make it seem like
             % the number refer both of the boxes above it
             xticks(loop_subplot,1.5:2:(nStim*2-2));
-            xticklabels(string(2:nStim))
-            % axis labels & title       
-            xlabel('Number of Stimulation [#]')
-            ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
             text(max(xlim()).*0.95,max(ylim()).*0.90,sprintf('\\bf{%guA}',intens(iIntens)))
-            legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
+            if iIntens == ceil(nIntens/2)
+                % This is the middle graph, place there the ylabel & legend
+                legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
+                ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
+                xticklabels({})
+            elseif iIntens == nIntens
+                % This is the bottom graph. Place there the xlabel & xticklabels
+                xlabel('Number of Stimulation [#]')
+                xticklabels(string(2:nStim))
+            else
+                xticklabels({})
+            end
+            loop_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
             loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
         end
     else

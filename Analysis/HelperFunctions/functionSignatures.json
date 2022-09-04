@@ -22,5 +22,18 @@
             {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
             {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]}
         ]
+    },
+    "fepsp_plotMarkings":
+    {
+        "inputs":
+        [
+            {"name":"traces", "kind":"namevalue", "type":[["cell", "2d"]]},
+            {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
+            {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
+            {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]}
+        ]
     }
 }

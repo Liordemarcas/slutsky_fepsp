@@ -51,9 +51,7 @@
             {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
 	    {"name":"out_name", "kind":"namevalue", "type":[["string", "scalar"],["char","vector"]]},
 	    {"name":"fsOut", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
-	    {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
-	    {"name":"max_jitter", "kind":"namevalue", "type":[["numeric", "scalar", ">=0"]]},
-            {"name":"save_var", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+	    {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]}
         ]
     }
 }

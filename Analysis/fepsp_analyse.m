@@ -18,7 +18,7 @@ function [results]= fepsp_analyse(varargin)
 %                 the response between the points that match 20% & 90% of
 %                 the amplitude. Order does not matter - slope between 20%
 %                 & 90% of amplitude is the same as slope between 90% & 20%.
-%                 Default: [0.2 0.9]
+%                 Default: [0.2 0.8]
 %   base_path -   string or char. Full path to where the output should be
 %                 saved. The name of the last folder in base_path will be
 %                 the prefix for all saved data. e.g. base_path =
@@ -88,7 +88,7 @@ p.addParameter('protocol_id',   [],             @(x) validateattributes(x,{'stri
 p.addParameter('markings',      [],             @(x) validateattributes(x,{'struct'},{'scalar'}))
 p.addParameter('base_path',     pwd,            @isfolder)
 p.addParameter('save_var',      true,           @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
-p.addParameter('slope_area',    [0.20 0.90],    @(x) validateattributes(x,{'numeric'},{'numel',2,'>=',0,'<=',1}))
+p.addParameter('slope_area',    [0.20 0.80],    @(x) validateattributes(x,{'numeric'},{'numel',2,'>=',0,'<=',1}))
 
 p.parse(varargin{:})
 
