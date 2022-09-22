@@ -226,6 +226,14 @@ for iChan = size(traces, 1) : -1 : 1
                 cat_data(:,col2fill{iStim}) = [loop_amp_norm(iStim,:)' loop_slope_norm(iStim,:)'];
             end
             
+            % lazy fix for 1 trace issue - cat_data will be a vector,
+            % boxplot will create only 1 box. In general, using only 1
+            % trace is not recommended
+            if isvector(cat_data) && size(traces{iChan, iIntens},2) == 1
+                % place nans on top, just to plot a vertical bar at each value
+                cat_data = [nan(size(cat_data));cat_data]; %#ok<AGROW> % not really, is predefined earlier
+            end
+
             % plot boxplots
             boxplot(cat_data(:,3:end));
             
@@ -248,8 +256,8 @@ for iChan = size(traces, 1) : -1 : 1
                 % This is the middle graph, place there the ylabel & legend
                 legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
                 ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
-                xticklabels({})
-            elseif iIntens == nIntens
+            end
+            if iIntens == nIntens
                 % This is the bottom graph. Place there the xlabel & xticklabels
                 xlabel('Number of Stimulation [#]')
                 xticklabels(string(2:nStim))

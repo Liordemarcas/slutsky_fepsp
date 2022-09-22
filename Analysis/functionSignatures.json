@@ -3,6 +3,7 @@
     {
         "inputs":
         [
+            {"name":"lfp_struct", "kind":"ordered", "type":[["struct", "scalar"]]},
             {"name":"data_in", "kind":"namevalue", "type":[["numeric", "2d"]]},
             {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
             {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
@@ -16,6 +17,7 @@
     {
         "inputs":
         [
+            {"name":"lfp_struct", "kind":"ordered", "type":[["struct", "scalar"]]},
             {"name":"traces", "kind":"namevalue", "type":[["cell", "2d"]]},
             {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
             {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
@@ -32,6 +34,7 @@
     {
         "inputs":
         [
+            {"name":"lfp_struct", "kind":"ordered", "type":[["struct", "scalar"]]},
             {"name":"traces", "kind":"namevalue", "type":[["cell", "2d"]]},
             {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
             {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
@@ -41,17 +44,38 @@
             {"name":"save_var", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
         ]
     },
+    "fepsp_summaryPlot":
+    {
+        "inputs":
+        [
+            {"name":"lfp_struct", "kind":"ordered", "type":[["struct", "scalar"]]},
+            {"name":"traces", "kind":"namevalue", "type":[["cell", "2d"]]},
+            {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
+            {"name":"markings", "kind":"namevalue", "type":[["struct", "scalar"]]},
+            {"name":"results", "kind":"namevalue", "type":[["struct", "scalar"]]},
+            {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
+            {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"saveFig", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+        ]
+    },
+
     "fepsp_wcpPipeline":
     {
         "inputs":
         [
             {"name":"basepath", "kind":"namevalue", "type":["folder"]},
-	    {"name":"wcpfiles", "kind":"namevalue", "type":["@(x) (all(isfile(x)) | isempty(x))"]},
-	    {"name":"fepsp_protocol", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
+	        {"name":"wcpfiles", "kind":"namevalue", "type":["@(x) (all(isfile(x)) | isempty(x))"]},
+	        {"name":"fepsp_protocol", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
             {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
-	    {"name":"out_name", "kind":"namevalue", "type":[["string", "scalar"],["char","vector"]]},
-	    {"name":"fsOut", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
-	    {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]}
+	        {"name":"out_name", "kind":"namevalue", "type":[["string", "scalar"],["char","vector"]]},
+	        {"name":"fsOut", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
+	        {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
+            {"name":"plot_summary", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
+            {"name":"add_fields", "kind":"namevalue", "type":["cell","ncols=2"]},
+            {"name":"inverse_all", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
         ]
     }
 }

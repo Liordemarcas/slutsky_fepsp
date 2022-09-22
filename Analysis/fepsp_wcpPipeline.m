@@ -19,6 +19,8 @@ function lfp = fepsp_wcpPipeline(varargin)
 %                   each trace sepertly, may be bad filtering due to very short data...).
 %                   If empty won't filter.
 %                   Defualt: [].
+%   inverse_all     Logical flag. If true, inverse all input traces.
+%                   Defualt: false.
 %   plot_summary    logical, to plot & save summary plot or not. Does not
 %                   support stability. See 'fepsp_summaryPlot.m'.
 %                   Defualt: true.
@@ -45,9 +47,9 @@ addOptional(p, 'intens', [], @isnumeric);
 addOptional(p, 'out_name', '', @mustBeTextScalar);
 addOptional(p, 'fsOut', 5000, @isnumeric);
 addOptional(p, 'cf', [], @isnumeric);
-addOptional(p, 'max_jitter', 0.5, @isnumeric);
 addOptional(p, 'plot_summary', true, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
 addOptional(p, 'add_fields',cell.empty([0,2]),@(x) validateattributes(x,{'cell'},{'ncols',2}))
+addOptional(p, 'inverse_all', false, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
 
 parse(p, varargin{:})
 basepath        = p.Results.basepath;
@@ -57,9 +59,9 @@ intens          = p.Results.intens;
 out_name        = p.Results.out_name;
 fsOut           = p.Results.fsOut;
 cf              = p.Results.cf;
-max_jitter      = p.Results.max_jitter;
 plot_summary    = p.Results.plot_summary;
 add_fields      = p.Results.add_fields;
+inverse_all     = p.Results.inverse_all;
 
 if isempty(wcpfiles)
     [files_names,files_paths] = uigetfile(join([basepath,filesep,'*.wcp'],''),'MultiSelect','on');
@@ -153,6 +155,12 @@ end
 stim_locs(idx_2_del) = [];
 wcpfiles(idx_2_del) = [];
 intens = unique_intens;
+
+% inverse all traces if requested
+if inverse_all
+    cntdata = -cntdata;
+end
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % organize lfp struct and save
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -173,7 +181,14 @@ recdir = fullfile(basepath);
 warning('off','MATLAB:MKDIR:DirectoryExists')
 mkdir(recdir);
 warning('on','MATLAB:MKDIR:DirectoryExists')
+if exist(fullfile(recdir, [out_name, '.lfp.mat']),"file")
+    answer = questdlg(sprintf('File named %s already exist. Overwrite it?',[out_name, '.lfp.mat']),'Overwrite','Yes','No','Yes');
+    if isempty(answer) || strcmp(answer,'No')
+        error('Aborting, file exist, user choose not to overwrite')
+    end
+end
 save(fullfile(recdir, [out_name, '.lfp.mat']), 'lfp')
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % continue processing
