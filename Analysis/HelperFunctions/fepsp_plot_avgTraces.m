@@ -1,4 +1,4 @@
-function [AvgPlot] = fepsp_plot_avgTraces(varargin)
+function [sumPlot] = fepsp_plot_avgTraces(varargin)
 % Create a figure for each channel, with simply the average traces of each
 % intensity
 % INPUT (required):

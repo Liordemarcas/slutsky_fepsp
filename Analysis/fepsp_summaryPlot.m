@@ -66,7 +66,8 @@ p.addParameter('intens',        [], @(x) (isnumeric(x) && isvector(x)) || isempt
 p.addParameter('traces_xlim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('traces_ylim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
-p.addParameter('saveFig',       true, @islogical)
+p.addParameter('saveFig',       true, @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
+p.addParameter('stp_legacy',    false, @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 
 parse(p, varargin{:})
 
@@ -80,6 +81,7 @@ traces_xlim     = sort(p.Results.traces_xlim);
 traces_ylim     = sort(p.Results.traces_ylim);
 dt              = p.Results.dt;
 saveFig         = p.Results.saveFig;
+stp_legacy      = p.Results.stp_legacy;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % prep
@@ -120,13 +122,18 @@ Slope =  results.all_traces.Slope;
 for iChan = size(traces, 1) : -1 : 1
  
     % open figure 
-    sumPlot(iChan) = figure();
+    sumPlot(iChan) = figure('WindowState','maximized');
     sumPlot(iChan) = fepsp_graphics(sumPlot(iChan));          % set graphics
     sgtitle(sprintf('Channel %d - %s', iChan,upper(protocol_info.protocol_id)),...
         'FontSize', 28, 'FontWeight', 'bold', 'FontName', 'FixedWidth','Interpreter','none')
     
     if nStim > 1
-        sb1 = subplot(length(intens) + 1, 1, 1);
+        if ~stp_legacy
+            sb1 = subplot(nStim, 2, [1 2]); % New option: 2 subplots for each stim
+        else
+            sb1 = subplot(length(intens) + 1, 1, 1); % Old option: 1 subplot for each intens
+        end
+        
     else
         sb1 = subplot(2, 2, [1, 2]);
     end
@@ -208,76 +215,137 @@ for iChan = size(traces, 1) : -1 : 1
     % plot analysis results
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
-    if nStim > 1
-        % multi stimuli protocol - show facilitation.
-        % for each intensity create 1 box plot for amplitude & 1 for slope
-        for iIntens = 1 : nIntens
-            loop_subplot = subplot(nIntens + 1, 1, iIntens + 1);
-            
-            % normalised amplitude & slope
-            loop_amp_norm = Amp{iChan, iIntens}./Amp{iChan, iIntens}(1,:);
-            loop_slope_norm = Slope{iChan, iIntens}./Slope{iChan, iIntens}(1,:);
-            
-            % order data so amplitude & slope are next to each other in
-            % every stimulus number
-            cat_data = nan(size(traces{iChan, iIntens},2),2*nStim);
-            col2fill = mat2cell(1:2*nStim,1,ones(1,nStim)*2);
-            for iStim = nStim:-1:1
-                cat_data(:,col2fill{iStim}) = [loop_amp_norm(iStim,:)' loop_slope_norm(iStim,:)'];
-            end
-            
-            % lazy fix for 1 trace issue - cat_data will be a vector,
-            % boxplot will create only 1 box. In general, using only 1
-            % trace is not recommended
-            if isvector(cat_data) && size(traces{iChan, iIntens},2) == 1
-                % place nans on top, just to plot a vertical bar at each value
-                cat_data = [nan(size(cat_data));cat_data]; %#ok<AGROW> % not really, is predefined earlier
-            end
-
-            % plot boxplots
-            boxplot(cat_data(:,3:end));
-            
-            % colour boxplots by type
-            colors = repmat({'m','g'},1,nStim);
-            box_edges = findobj(loop_subplot,'Tag','Box');
-            for iBox = (nStim*2-2):-1:1
-                color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),colors{iBox},'FaceAlpha',.5,'PickableParts','none');
-            end
-
-            % add separating lines between stimulations
-            xline(loop_subplot, (2:(nStim-1)) +0.5,'--k','Alpha',0.5)
-
-            % finishing touch:
-            % fix ticks to be centred between boxes - make it seem like
-            % the number refer both of the boxes above it
-            xticks(loop_subplot,1.5:2:(nStim*2-2));
-            text(max(xlim()).*0.95,max(ylim()).*0.90,sprintf('\\bf{%guA}',intens(iIntens)))
-            if iIntens == ceil(nIntens/2)
-                % This is the middle graph, place there the ylabel & legend
-                legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
-                ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
-            end
-            if iIntens == nIntens
-                % This is the bottom graph. Place there the xlabel & xticklabels
-                xlabel('Number of Stimulation [#]')
-                xticklabels(string(2:nStim))
-            else
-                xticklabels({})
-            end
-            loop_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
-            loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
-        end
-    else
-        % only 1 stimulation in protocol - show input-output
+    if nStim > 1       
         
+        if ~stp_legacy
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % new option: 2 plots per stimulation, simillar to input-output
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % get how many traces are in each intens
+            nTraces = cellfun(@(x) size(x,2),traces(iChan,:));
+            intens_group = repelem(intens,nTraces);
+
+            % collect data & normalize it
+            amp_all_intens = [Amp{iChan,:}];
+            amp_fac_all    = amp_all_intens./amp_all_intens(1,:);
+            slope_all_intens = [Slope{iChan,:}];
+            slope_fac_all    = slope_all_intens./slope_all_intens(1,:);
+
+            for iStim = 2 : nStim
+                % create axes
+                amp_subplot = subplot(nStim, 2, 2*iStim - 1);
+                slope_subplot = subplot(nStim, 2, 2*iStim);
+                % If we number each element in an increasing rowwise manner, in a row-by-2 matrix:
+                % rows end in nRow*2, therefore they start with nRow*2-1
+                %   1 | 1, 2    ->  1*2-1, 1*2
+                %   2 | 3, 4    ->  2*2-1, 2*2
+                %   3 | 5, 6    ->  2*3-1, 3*2
+
+
+                % plot "input - output" for amplitude
+%                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
+                boxplot(amp_subplot,amp_fac_all(iStim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
+
+                % plot "input - output" for slope
+%                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
+                boxplot(slope_subplot,slope_fac_all(iStim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
+
+                % color boxplots 2 match avg_traces_plot colors
+                amp_box_edges = findobj(amp_subplot,'Tag','Box');
+                slope_box_edges = findobj(slope_subplot,'Tag','Box');
+                for iBox = nIntens:-1:1
+                    iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
+                    patch(amp_subplot,get(amp_box_edges(iBox),'XData'),get(amp_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+                    patch(slope_subplot,get(slope_box_edges(iBox),'XData'),get(slope_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+                end
+
+                % arrange graphics
+                amp_subplot.PositionConstraint = 'innerposition';      % Let the graphic part take more space
+                slope_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
+                xticklabels(amp_subplot,string(intens_sorted))   % for clearer view
+                xticklabels(slope_subplot,string(intens_sorted)) % for clearer view
+                ylabel(amp_subplot,{'Facilitation' sprintf('$\\frac{stim %d}{stim 1}$',iStim)},'Interpreter','latex') % 1 label is enough
+                fepsp_graphics(amp_subplot);
+                fepsp_graphics(slope_subplot);
+            end
+            xlabel(amp_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Amplitude'))
+            xlabel(slope_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Slope'))
+        else
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % old option: create 1 subplot for each intensity, with both stimulations
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % multi stimuli protocol - show facilitation.
+            % for each intensity create 1 box plot for amplitude & 1 for slope
+            for iIntens = 1 : nIntens
+                loop_subplot = subplot(nIntens + 1, 1, iIntens + 1);
+
+                % normalised amplitude & slope
+                loop_amp_norm = Amp{iChan, iIntens}./Amp{iChan, iIntens}(1,:);
+                loop_slope_norm = Slope{iChan, iIntens}./Slope{iChan, iIntens}(1,:);
+
+                % order data so amplitude & slope are next to each other in
+                % every stimulus number
+                cat_data = nan(size(traces{iChan, iIntens},2),2*nStim);
+                col2fill = mat2cell(1:2*nStim,1,ones(1,nStim)*2);
+                for iStim = nStim:-1:1
+                    cat_data(:,col2fill{iStim}) = [loop_amp_norm(iStim,:)' loop_slope_norm(iStim,:)'];
+                end
+
+                % lazy fix for 1 trace issue - cat_data will be a vector,
+                % boxplot will create only 1 box. In general, using only 1
+                % trace is not recommended
+                if isvector(cat_data) && size(traces{iChan, iIntens},2) == 1
+                    % place nans on top, just to plot a vertical bar at each value
+                    cat_data = [nan(size(cat_data));cat_data]; %#ok<AGROW> % not really, is predefined earlier
+                end
+
+                % plot boxplots
+                boxplot(cat_data(:,3:end));
+
+                % colour boxplots by type
+                colors = repmat({'m','g'},1,nStim);
+                box_edges = findobj(loop_subplot,'Tag','Box');
+                for iBox = (nStim*2-2):-1:1
+                    color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),colors{iBox},'FaceAlpha',.5,'PickableParts','none');
+                end
+
+                % add separating lines between stimulations
+                xline(loop_subplot, (2:(nStim-1)) +0.5,'--k','Alpha',0.5)
+
+                % finishing touch:
+                % fix ticks to be centred between boxes - make it seem like
+                % the number refer both of the boxes above it
+                xticks(loop_subplot,1.5:2:(nStim*2-2));
+                text(max(xlim()).*0.95,max(ylim()).*0.90,sprintf('\\bf{%guA}',intens(iIntens)))
+                if iIntens == ceil(nIntens/2)
+                    % This is the middle graph, place there the ylabel & legend
+                    legend(color_box(1:2),['Slope: ' slope_area_label],'Amplitude','Location','best')
+                    ylabel({'Mean Part of' 'First Stimulation' '[stim/(stim num 1)]'})
+                end
+                if iIntens == nIntens
+                    % This is the bottom graph. Place there the xlabel & xticklabels
+                    xlabel('Number of Stimulation [#]')
+                    xticklabels(string(2:nStim))
+                else
+                    xticklabels({})
+                end
+                loop_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
+                loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
+            end
+        end
+        
+    else
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % only 1 stimulation in protocol - show input-output
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % get how many traces are in each intens
         nTraces = cellfun(@(x) size(x,2),traces(iChan,:));
         intens_group = repelem(string(intens),nTraces);
         
         % plot input-output for amplitude
         loop_subplot = subplot(2, 2, 3);
-        Amp_all_intens = [Amp{iChan,:}];
-        boxplot(loop_subplot,Amp_all_intens,intens_group,'GroupOrder',string(intens_sorted))
+        amp_all_intens = [Amp{iChan,:}];
+        boxplot(loop_subplot,amp_all_intens,intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
         xticklabels(string(intens_sorted))
         xlabel('Intensity [uA]')
         ylabel('Amplidute [mV]')
@@ -294,7 +362,7 @@ for iChan = size(traces, 1) : -1 : 1
         % plot input-output for slope
         loop_subplot = subplot(2, 2, 4);
         slope_all_intens = [Slope{iChan,:}];
-        boxplot(loop_subplot,slope_all_intens,intens_group,'GroupOrder',string(intens_sorted))
+        boxplot(loop_subplot,slope_all_intens,intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
         xlabel('Intensity [uA]')
         ylabel('Slope [mV/ms]')
         title(['Input/Output (Slope: ' slope_area_label ')'])
@@ -312,7 +380,7 @@ end
 % save
 if saveFig
     fprintf(['This is the time to make edits (such as moving the legends) before figure export.'...
-        '\ncontinure running the code (by F5) ones you are ready to export!\n'])
+        '\ncontinue running the code (by F5) ones you are ready to export!\n'])
     keyboard
     basepath = pwd;
     [~, basename] = fileparts(basepath);
@@ -320,6 +388,7 @@ if saveFig
     mkdir(figpath)
     figname = fullfile(figpath, sprintf('%s_fepsp_results', basename));
     export_fig(figname, '-tif', '-transparent', '-r300')
+    fprintf('Saved!\n')
 end
 
 end

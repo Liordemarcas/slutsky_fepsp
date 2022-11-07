@@ -172,6 +172,7 @@ lfp.intens      = intens;
 lfp.stim_locs   = stim_locs;
 lfp.cf          = cf;
 lfp.data_in     = cntdata;
+lfp.title       = out_name;
 for iField = 1:size(add_fields,1)
     lfp.(add_fields{iField,1}) = add_fields{iField,2};
 end

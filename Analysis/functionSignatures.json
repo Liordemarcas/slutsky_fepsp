@@ -58,7 +58,8 @@
             {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
             {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
             {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]},
-            {"name":"saveFig", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+            {"name":"saveFig", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
+            {"name":"stp_legacy", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
         ]
     },
 

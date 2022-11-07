@@ -222,9 +222,11 @@ if ~isempty(fs)
     protocol_info.baseline = 1:round((protocol_info.stim_times(1)-dt)* fs / 1000);
     
     % create time stamps
-    protocol_info.Tstamps = -protocol_info.stim_times(1) :...
-        (1 / fs) * 1000 : (protocol_info.rec_length - protocol_info.stim_times(1));
-    protocol_info.Tstamps = protocol_info.Tstamps(1 : end - 1)';
+%     protocol_info.Tstamps = -protocol_info.stim_times(1) :...
+%         (1 / fs) * 1000 : (protocol_info.rec_length - protocol_info.stim_times(1));
+%     protocol_info.Tstamps = protocol_info.Tstamps(1 : end - 1)';
+    protocol_info.Tstamps = ( (1/fs)*1000 ) : ( (1/fs)*1000 ) : protocol_info.rec_length;
+    protocol_info.Tstamps = ( protocol_info.Tstamps - protocol_info.stim_times(1) )';
 end
 
 end
