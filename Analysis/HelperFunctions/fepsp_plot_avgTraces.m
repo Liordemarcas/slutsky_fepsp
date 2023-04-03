@@ -45,7 +45,7 @@ p.addParameter('protocol_id',   [], @(x) validateattributes(x,{'string','char'},
 p.addParameter('intens',        [], @(x) (isnumeric(x) && isvector(x)) || isempty(x))
 p.addParameter('traces_xlim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('traces_ylim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
-p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
+p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'vector','nonnegative'}))
 p.addParameter('saveFig',       true, @islogical)
 
 parse(p, varargin{:})
@@ -103,9 +103,16 @@ for iChan = size(traces, 1) : -1 : 1
     
     % plot and change data tips
     if nIntens > 1
-        colororder(green_magenta_Cmap(nIntens))
+%         colororder(green_magenta_Cmap(nIntens))
+%         colororder(distinguishable_colors(nIntens))
+        base_colors = parula(nIntens);
+        base_colors = rgb2hsv(base_colors);
+        no_more_down = base_colors(:,3) <= 0.3;
+        base_colors(~no_more_down,3) = base_colors(~no_more_down,3) - 0.2;
+        base_colors = hsv2rgb(base_colors);
+        colororder(base_colors)
     end
-    traces_avg_h = plot(protocol_info.Tstamps, traces_avg, 'LineWidth', 1);
+    traces_avg_h = plot(protocol_info.Tstamps, traces_avg, 'LineWidth', 2);
     for iIntens = 1 : nIntens
         traces_avg_h(iIntens).Tag = num2str(intens(iIntens));
         r = dataTipTextRow('intensity', ones(size(traces_avg_h(iIntens).XData)) * intens(iIntens));

@@ -50,6 +50,7 @@ addOptional(p, 'cf', [], @isnumeric);
 addOptional(p, 'plot_summary', true, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
 addOptional(p, 'add_fields',cell.empty([0,2]),@(x) validateattributes(x,{'cell'},{'ncols',2}))
 addOptional(p, 'inverse_all', false, @(x) validateattributes(x, {'logical','numeric'}, {'binary','scalar'}))
+addOptional(p, 'overwrite_existing', 0, @(x) validateattributes(x, {'numeric'}, {'scalar'}))
 
 parse(p, varargin{:})
 basepath        = p.Results.basepath;
@@ -62,12 +63,14 @@ cf              = p.Results.cf;
 plot_summary    = p.Results.plot_summary;
 add_fields      = p.Results.add_fields;
 inverse_all     = p.Results.inverse_all;
+overwrite_existing = p.Results.overwrite_existing;
 
 if isempty(wcpfiles)
     [files_names,files_paths] = uigetfile(join([basepath,filesep,'*.wcp'],''),'MultiSelect','on');
     % return if no file selected
     if isnumeric(files_names)
-        error('No file selected')
+        err = MException('fepsp_wcpPipeline:NoFileSelected','No file selected');
+        throw(err)
     end
 
     wcpfiles = fullfile(files_paths,files_names);
@@ -86,6 +89,20 @@ end
 % prep data
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% check if file exist, and if to overwrite 
+% (overwrite_existing == 1 -> always, overwrite_existing == 0 -> ask, overwrite_existing == -1 -> never)
+recdir = fullfile(basepath);
+if exist(fullfile(recdir, join([out_name, '.lfp.mat'],'')),"file") && ~overwrite_existing
+    answer = questdlg(sprintf('File named %s already exist. Overwrite it?',[out_name, '.lfp.mat']),'Overwrite','Yes','No','Yes');
+    if isempty(answer) || strcmp(answer,'No')
+        err = MException('fepsp_wcpPipeline:UserNotOverWrite','Aborting, file exist, user choose not to overwrite');
+        throw(err)
+    end
+elseif exist(fullfile(recdir, join([out_name, '.lfp.mat'],'')),"file") && overwrite_existing == -1
+    err = MException('fepsp_wcpPipeline:UserNotOverWrite','Aborting, file exist, user choose not to overwrite');
+    throw(err)
+end
+
 % organize protocol info
 protocol_info = fepsp_getProtocol('protocol_id', fepsp_protocol);
 stim_times = protocol_info.stim_times / 1000;
@@ -93,6 +110,7 @@ stim_times = protocol_info.stim_times / 1000;
 % initialize
 nfiles = length(wcpfiles);
 cntdata = [];
+traces_T = {};
 stim_locs = cell(1, nfiles);
 stim_start = 1;
 filelength = nan(1, nfiles);
@@ -108,19 +126,19 @@ for ifile = 1 : nfiles
     end
 
     % load lfp
-    lfp = getLFP('basepath', basepath, 'basename', basename,...
+    lfp_tmp = getLFP('basepath', basepath, 'basename', basename,...
         'ch', 1, 'chavg', {},...
         'fs', fsOut, 'interval', [0 inf], 'extension', 'wcp',...
         'savevar', false, 'forceL', true, 'cf', cf);
-    fs = lfp.fs;
-    [nsamps, ntraces] = size(lfp.data);
+    fs = lfp_tmp.fs;
+    [nsamps, ntraces] = size(lfp_tmp.data);
 
     % organize according to protocol
     switch fepsp_protocol
         
         case 'freerun'
             % remove incomplete data from last tract
-            tmpdata = lfp.data(:);
+            tmpdata = lfp_tmp.data(:);
             rmidx = find(movmax(diff(tmpdata), [0, 100]) == 0);
             if max(diff(rmidx)) > 1 
                 warning('check')
@@ -133,10 +151,11 @@ for ifile = 1 : nfiles
 
         otherwise
             % cat data and create stim indices
-            cntdata = [cntdata; lfp.data(:)];
+            cntdata = [cntdata; lfp_tmp.data(:)];
             stim_locs{ifile} = stim_start + [stim_times(1) * fs :...
-                size(lfp.data, 1) : length(lfp.data(:))];
+                size(lfp_tmp.data, 1) : length(lfp_tmp.data(:))];
             stim_start = length(cntdata);
+            traces_T = [traces_T,lfp_tmp.trace_T];
     end
 end
 
@@ -167,28 +186,25 @@ end
 
 % add info to lfp struct
 lfp.files       = wcpfiles;
+lfp.fs          = lfp_tmp.fs;
+lfp.fs_orig     = lfp_tmp.fs_orig;
 lfp.protocol_id = fepsp_protocol;
 lfp.intens      = intens;
 lfp.stim_locs   = stim_locs;
 lfp.cf          = cf;
 lfp.data_in     = cntdata;
 lfp.title       = out_name;
+lfp.traces_T    = traces_T; % time each trace was recorded
 for iField = 1:size(add_fields,1)
     lfp.(add_fields{iField,1}) = add_fields{iField,2};
 end
 
+
 % save
-recdir = fullfile(basepath);
 warning('off','MATLAB:MKDIR:DirectoryExists')
 mkdir(recdir);
 warning('on','MATLAB:MKDIR:DirectoryExists')
-if exist(fullfile(recdir, [out_name, '.lfp.mat']),"file")
-    answer = questdlg(sprintf('File named %s already exist. Overwrite it?',[out_name, '.lfp.mat']),'Overwrite','Yes','No','Yes');
-    if isempty(answer) || strcmp(answer,'No')
-        error('Aborting, file exist, user choose not to overwrite')
-    end
-end
-save(fullfile(recdir, [out_name, '.lfp.mat']), 'lfp')
+save(fullfile(recdir, join([out_name, '.lfp.mat'],'')), 'lfp','-v7.3')
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -214,12 +230,20 @@ delete(marking_files)
 % calculate results from points
 lfp.results = fepsp_analyse(lfp,"save_var",false);
 
+% fit models to responce in case of IO
+for iCh = 1 : size(lfp.traces,1)
+    for iStim = 1:protocol_info.nStim
+        lfp.Amp_mdl{iCh}{iStim}   = fepsp_fitIO(lfp,"resp_type","Amp","stim2work",iStim,"Chan",iCh);
+        lfp.Slope_mdl{iCh}{iStim} = fepsp_fitIO(lfp,"resp_type","Slope","stim2work",iStim,"Chan",iCh);
+    end
+end
+
 % save
 recdir = fullfile(basepath);
 warning('off','MATLAB:MKDIR:DirectoryExists')
 mkdir(recdir);
 warning('on','MATLAB:MKDIR:DirectoryExists')
-save(fullfile(recdir, [out_name, '.lfp.mat']), 'lfp')
+save(fullfile(recdir, join([out_name, '.lfp.mat'],'')), 'lfp',"-v7.3")
 
 % create summary plots
 if plot_summary

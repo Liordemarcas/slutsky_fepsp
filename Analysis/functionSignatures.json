@@ -24,7 +24,7 @@
             {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
             {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
             {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
-            {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"dt", "kind":"namevalue", "type":[["numeric", "vector"]]},
             {"name":"max_jitter", "kind":"namevalue", "type":[["numeric", "scalar", ">=0"]]},
             {"name":"base_folder", "kind":"namevalue", "type":["folder"]},
             {"name":"fast_mark", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
@@ -57,12 +57,32 @@
             {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
             {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
             {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
-            {"name":"dt", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"stim2plot", "kind":"namevalue", "type":[["integer", "ncols=2", "positive", "2d"],["@(x) isempty(x)"]]},
+            {"name":"dt", "kind":"namevalue", "type":[["numeric", "vector"]]},
             {"name":"saveFig", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
-            {"name":"stp_legacy", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+            {"name":"Slope_mdl", "kind":"namevalue", "type":[["cell", "vector"]]},
+            {"name":"Amp_mdl", "kind":"namevalue", "type":[["cell", "vector"]]}
         ]
     },
-
+     "fepsp_summaryPlot_stability":
+    {
+        "inputs":
+        [
+            {"name":"lfp_struct", "kind":"ordered", "type":[["struct", "scalar"]]},
+            {"name":"traces", "kind":"namevalue", "type":[["cell", "2d"]]},
+            {"name":"fs", "kind":"namevalue", "type":[["numeric", "scalar"]]},
+            {"name":"protocol_id", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
+            {"name":"results", "kind":"namevalue", "type":[["struct", "scalar"]]},
+            {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
+            {"name":"traces_Xlimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"traces_Ylimit", "kind":"namevalue", "type":[["numeric", "numel=2"],["@(x) isempty(x)"]]},
+            {"name":"slidingwin_size", "kind":"namevalue", "type":[["integer", "positive", "scalar"]]},
+            {"name":"stim2plot", "kind":"namevalue", "type":[["integer", "ncols=2", "positive", "2d"],["@(x) isempty(x)"]]},
+            {"name":"dt", "kind":"namevalue", "type":[["numeric", "vector"]]},
+            {"name":"Trace2Time_factor", "kind":"namevalue", "type":[["numeric", "positive", "scalar"]]},
+            {"name":"saveFig", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+        ]
+    },
     "fepsp_wcpPipeline":
     {
         "inputs":
@@ -76,7 +96,26 @@
 	        {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
             {"name":"plot_summary", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
             {"name":"add_fields", "kind":"namevalue", "type":["cell","ncols=2"]},
-            {"name":"inverse_all", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]}
+            {"name":"inverse_all", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
+            {"name":"overwrite_existing", "kind":"namevalue", "type":[["numeric", "scalar"]]}
+        ]
+    },
+    "fepsp_abfPipeline":
+    {
+        "inputs":
+        [
+            {"name":"basepath", "kind":"namevalue", "type":["folder"]},
+	        {"name":"abffiles", "kind":"namevalue", "type":["@(x) (all(isfile(x)) | isempty(x))"]},
+	        {"name":"fepsp_protocol", "kind":"namevalue", "type":[["choices=['custom',fepsp_getProtocol('protocol_id','display')]"]]},
+            {"name":"intens", "kind":"namevalue", "type":[["numeric", "vector"]]},
+	        {"name":"out_name", "kind":"namevalue", "type":[["string", "scalar"],["char","vector"]]},
+            {"name":"Ch", "kind":"namevalue", "type":[["numeric", "vector"]]},
+	        {"name":"fsOut", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
+	        {"name":"cf", "kind":"namevalue", "type":[["numeric", "scalar"],["@(x) isempty(x)"]]},
+            {"name":"plot_summary", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
+            {"name":"add_fields", "kind":"namevalue", "type":["cell","ncols=2"]},
+            {"name":"inverse_all", "kind":"namevalue", "type":[["logical"],["choices={0, 1}"]]},
+            {"name":"overwrite_existing", "kind":"namevalue", "type":[["numeric", "scalar"]]}
         ]
     }
 }

@@ -1,0 +1,208 @@
+function [mdl,slope,slope_var] = fepsp_fitIO(varargin)
+% fits a model to an "IO curve".
+% The IO curve can represent either the amplitude or slope of the response
+% to a stimulus, and the model can be either a linear fit or a logistic fit.
+%
+% INPUTs (required):
+%   traces      - 2d cell array. see fepsp_org2traces.m.
+%   results     - Struct. See "fepsp_analyse.m" for more info.
+%
+% INPUT (optional):
+%   intens      - numeric vector of stimulus intensities used for each
+%                 column of traces. Typically provided in units of uA.
+%                 if empty will be set as a unit decreasing vector.
+%   resp_type   - text scalar, either "Amp" or "Slope", indicating whether
+%                 to fit the model to the amplitude or slope curve.
+%                 Default: "Slope".
+%   fit_type    - text scalar, either "est_linear" or "log_fit", indicating
+%                 whether to fit a line (to area determined by slope_area or use_points)
+%                 or a logistic function to the data.
+%                 Default: "est_linear".
+%   use_points  - logical vactor, with the same length as intens. When
+%                 any true, use the intens matching true in this vec to
+%                 perform the linear fit. Override 'slope_area'.
+%                 Default: false in the length of intens
+%   slope_area  - numeric vector of 2 elements between 0 and 1, only used in "est_linear" case. 
+%                 It defines the area used for linear fitting as a percentage of the mean maximal intensity response. 
+%                 For example, if slope_area is [0.2, 0.8], intensities whose mean response is between 20% and 80%
+%                 of the highest intensity's mean response will be included in the analysis.
+%   stim2work   - positive interger scalar, what stim to calculate fit over.
+%                 Default: 1.
+%   Chan        - positive interger scalar, what data channel to fit in.
+%                 Default: 1.
+%                 
+% Outputs:
+%   mdl         - output fitted model, LinearModel (in case of "est_linear") 
+%                 or NonLinearModel (in case of "log_fit").
+%   slope       - calculated slope of the linear part. 
+%                 In case of "est_linear", simply the line slope. 
+%                 In case of "log_fit", the slope of the tangent line @ x0,
+%                 meaning L*k/4. %%%% Not built yet %%%% 
+%   slope_var   - variation of the slope parameter. %%%% Not built yet for log_fit %%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% input
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+p = inputParser;
+p.StructExpand = true;
+p.KeepUnmatched = true;
+
+p.addParameter("traces"     , {}             , @(x) mustBeA(x,'cell')) % only to know ntraces per stim - there should be better way to do that
+p.addParameter("results"    , []             , @(x) mustBeA(x,'struct'))
+p.addParameter("intens"     , []             , @mustBeNumeric)
+p.addParameter("resp_type"  , "Slope"        , @(x) mustBeMember(x,["Amp","Slope"]))
+p.addParameter("fit_type"   , "log_fit"      , @(x) mustBeMember(x,["est_linear","log_fit"]))
+p.addParameter("slope_area" , [0.20 0.80]    , @(x) validateattributes(x,{'numeric'},{'numel',2,'>=',0,'<=',1}))
+p.addParameter("use_points" , []             , @(x) mustBeA(x,'logical'))
+p.addParameter("stim2work"  , 1              , @(x) validateattributes(x,{'numeric'},{'scalar','integer','positive'}))
+p.addParameter("Chan"       , 1              , @(x) validateattributes(x,{'numeric'},{'scalar','integer','positive'}))
+p.parse(varargin{:})
+
+traces      = p.Results.traces;
+intens      = p.Results.intens;
+results     = p.Results.results;
+resp_type   = p.Results.resp_type;
+fit_type    = p.Results.fit_type;
+slope_area  = sort(p.Results.slope_area);
+use_points  = p.Results.use_points;
+stim2work   = p.Results.stim2work;
+Chan        = p.Results.Chan;
+
+% validate intens
+if isempty(intens)
+    intens = -(size(traces, 2): -1 : 1);
+    warning('No "intens" input - using a unit decresing vector (-1,-2,...) for X value in fitting')
+elseif numel(intens) ~= size(traces, 2)
+    error('discripancy between the length of intens and the size of traces')
+end
+
+% validate use_points
+if isempty(use_points)
+    use_points = false(size(intens));
+elseif numel(use_points) ~= numel(intens)
+    error('"use_points" must be the same number of elements as "intens"')
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% helper vars
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% get how many traces are in each intens
+nTraces = cellfun(@(x) size(x,2),traces);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% fit function to I/O curve
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+switch fit_type
+    case "log_fit"
+        % fit a logistical function
+
+        % collect Xvals & Yvals for fitting
+        Xvals = repelem(intens,nTraces);
+        Yvals = cellfun(@(x) x(stim2work,:),results.all_traces.(resp_type)(Chan,:),'UniformOutput',false);
+        Yvals = [Yvals{:}];
+
+
+        % create logistical function for fitting
+        % Latex:
+        % $$\[f(x) = \frac{L}{1 + e^{-K(x - x_0)}}\]$$
+        %
+        % L = c(1)
+        % k = c(2)
+        % x0 = c(3)
+        sig_fnc = @(c,x) c(1) ./ (1 + exp( -c(2) .* (x-c(3)) ));
+        
+        % choose initial coefficients: maximal response for L, 1 for k, minimal
+        % intensity for x0
+        %   Note: So far I got better results with [0 0 0].
+        %   I havn't notice any effecto of c(3) on how sucsessfull the
+        %   model, did note big effects to c(1) & c(2).
+        %   parameters "as is" might expect a posative responce value - try
+        %   sepereting slope & amp parameters.
+        %   Maybe a better starting conditions will be:
+        %       [max_responce slope_line_min&max_responce min_intens]
+        %   So for slope:
+        %       [min(Yvals), ( min(Yvals)-max(Yvals) )/( max(Xvals)-min(Xvals) ), min(Xvals)]
+        %{
+%         switch resp_type
+%             case "Slope"
+%                 init_coeff = [min(Yvals), - ( min(Yvals)-max(Yvals) )/( max(Xvals)-min(Xvals) ), min(Xvals)]; % note that c2 must be posative, so the responce will start from 0 & go to max responce
+%             case "Amp"
+%                 init_coeff = [max(Yvals), ( max(Yvals)-min(Yvals) )/( max(Xvals)-min(Xvals) ), min(Xvals)];
+%         end
+        %}
+        % Note that in order to make sense, k must be positive - responce
+        % start from 0 and raise towards L. The diffrence between Slope &
+        % amp is if L is biggest negative (slope) or positive (Amp).
+        switch resp_type
+            case "Slope"
+                init_coeff(1) = min(Yvals);
+            case "Amp"
+                init_coeff(1) = max(Yvals);
+        end
+        init_coeff = [init_coeff ( max(Yvals)-min(Yvals) )/( max(Xvals)-min(Xvals) ), min(Xvals) ];
+        
+        % fix case there is only 1 intensity - inital k will be inf
+        if init_coeff(2) == inf
+            init_coeff(2) = 0;
+            warning('Estimating with only 1 intensity is meaningless')
+        end
+        
+        % fit model
+        mdl = fitnlm(Xvals,Yvals,sig_fnc,init_coeff);
+    
+        % unfinished: get the slope from the model
+        %{
+        % if nargout > 1
+        % % calculate max slope - it is (L.*k)/4 by a simple calculation, see demonstration in https://www.desmos.com/calculator/1p4931lklr
+        % L_k = mdl.Coefficients.Estimate(1:2);
+        % slope = L_k(1).*L_k(2) / 4;
+        %
+        % % find slope error - using delta method, accurding to here
+        % L_se = mdl.CoefficientCovariance(1,1);
+        % k_se = mdl.CoefficientCovariance(2,2);
+        % k_L_covar =
+        % end
+        %}
+    case "est_linear"
+        % assume that the part between slope_area is linear - fit a
+        % regression line to it
+        if ~any(use_points)
+            % use slope_area to decide what intens to use
+
+            % make sure that responses are sorted by intens size
+            [sorted_intens,intens_idx] = sort(intens);
+            sorted_resp = results.all_traces.(resp_type)(Chan,intens_idx);
+
+            % find mean size of each response, convert slope_area to part of
+            % maximal response, and find what intensities fall in this area
+            mean_resp = abs(cellfun(@(x) mean(x,"omitnan"),sorted_resp)); % use absolute value to have consistency between negative & positive response values
+            slope_area_lims = mean_resp(end).*slope_area;
+            slope_area_log = ( mean_resp > slope_area_lims(1) ) & ( mean_resp < slope_area_lims(2) );
+
+            % fit a line to responses that fall in the slope_area
+            Yvals = [sorted_resp{slope_area_log}];
+            nTraces = nTraces(intens_idx);
+            Xvals = repelem(sorted_intens(slope_area_log),nTraces(slope_area_log));
+        else
+            % use the points user choose
+            Xvals = repelem(intens(use_points),nTraces(use_points));
+            resp = results.all_traces.(resp_type);
+            Yvals = [resp{Chan,use_points}];
+        end
+
+
+        mdl = fitlm(Xvals,Yvals);
+        
+         % get slope & var output variable - pretty redundant since it is
+         % easily inferred from model output, but lets write it in order to
+         % be matched with "log_fit" case
+        slope = mdl.Coefficients.Estimate(2);
+        slope_var = mdl.CoefficientCovariance(2,2); 
+        % note that sqrt(slope_var) is equal to the SE reported with the
+        % model, and that this value is used to calculate the CI in coefCI -
+        % however I still haven't been able to calculate this value with
+        % std(Yvals)^2/( sum( (Xvals-mean(Xvals)).^2 ) )
+end

@@ -30,12 +30,31 @@ function [sumPlot] = fepsp_summaryPlot(varargin)
 %                 according to the max range in each channel (excluding
 %                 stimulus artifact). 
 %                 Default: [].
-%   dt          - non-negative scalar. Dead time between
+%   dt          - non-negative vector. For each stimuli, Dead time between
 %                 stimulus onset and earliest possible response [ms].
 %                 Used to omit stimulus artifact from analysis. 
 %                 See "fepsp_getProtocol.m" for more info.
 %                 Default: 2.
+%   stim2plot   - numeric 2d of intergers, X on 2. 
+%                 Fist col is the dividend stimuli, secound col is the divisor stimuli.
+%                 What stimuli to plot (in 1st col), and for each stimuli
+%                 if to divide other other stimuli by it. Placing NaN in
+%                 the secound col will tell the function not to divide, and
+%                 to plot IO graph instead.
+%                 For example,[1 nan ; 2 1 ; 3 1 ; 2 3] will plot IO for
+%                 1st stimuli, fasilitation between first & secound, 
+%                 fasilitation between first & third, and fasilitation between secound & third.
+%                 Default: [] in this case:
+%                   if only 1 stimulus will plot IO curve - simullar to [1 nan]
+%                   if more than 1, will plot fasilitation to 1st stimulimi
+%                   - simular to [2 1 ; 3 1; 4 1 ; ...]
 %   saveFig     - logical. save figure in basepath {true}
+%   Slope_mdl   - cell vector (1 elem per channel), contain cell vectors (1 elem per intens) containing
+%                 LinearModel or NonLinearModel. 
+%                 Model fitted to IO curve, based on slope responce.
+%   Amp_mdl     - cell vector (1 elem per channel), contain cell vectors (1 elem per intens) containing
+%                 LinearModel or NonLinearModel. 
+%                 Model fitted to IO curve, based on amp responce.
 %
 % OUTPUT:
 %   sumPlot     - figure handles array. Handles to the summary figures, one
@@ -65,9 +84,11 @@ p.addParameter('results',       [], @(x) validateattributes(x,{'struct'},{'scala
 p.addParameter('intens',        [], @(x) (isnumeric(x) && isvector(x)) || isempty(x))
 p.addParameter('traces_xlim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('traces_ylim',   [], @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
-p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
+p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'vector','nonnegative'}))
+p.addParameter('stim2plot',     [], @(x) validateattributes(x,{'numeric'},{'2d','positive'}))
 p.addParameter('saveFig',       true, @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
-p.addParameter('stp_legacy',    false, @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
+p.addParameter('Slope_mdl',     [], @(x) mustBeA(x,{'cell'}))
+p.addParameter('Amp_mdl',       [], @(x) mustBeA(x,{'cell'}))
 
 parse(p, varargin{:})
 
@@ -80,8 +101,10 @@ intens          = p.Results.intens;
 traces_xlim     = sort(p.Results.traces_xlim);
 traces_ylim     = sort(p.Results.traces_ylim);
 dt              = p.Results.dt;
+stim2plot       = p.Results.stim2plot;
 saveFig         = p.Results.saveFig;
-stp_legacy      = p.Results.stp_legacy;
+Slope_mdl       = p.Results.Slope_mdl;
+Amp_mdl         = p.Results.Amp_mdl;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % prep
@@ -115,6 +138,16 @@ slope_area_label = sprintf('%.3g%% to %.3g%%', results.slope_area * 100);
 Amp = results.all_traces.Amp;
 Slope =  results.all_traces.Slope;
 
+% create default for stim2plot, understand how many plots should be
+if isempty(stim2plot)
+    if nStim == 1
+        stim2plot = [1 nan];
+    else
+        stim2plot = [(2:nStim)',ones(nStim-1,1)];
+    end
+end
+nAn_rows = size(stim2plot,1);
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % build figures
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -127,6 +160,8 @@ for iChan = size(traces, 1) : -1 : 1
     sgtitle(sprintf('Channel %d - %s', iChan,upper(protocol_info.protocol_id)),...
         'FontSize', 28, 'FontWeight', 'bold', 'FontName', 'FixedWidth','Interpreter','none')
     
+    sb1 = subplot(nAn_rows + 1, 2, [1 2]);
+    %{
     if nStim > 1
         if ~stp_legacy
             sb1 = subplot(nStim, 2, [1 2]); % New option: 2 subplots for each stim
@@ -137,7 +172,7 @@ for iChan = size(traces, 1) : -1 : 1
     else
         sb1 = subplot(2, 2, [1, 2]);
     end
-    
+    %}
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % plot average traces for all intensities
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -149,8 +184,9 @@ for iChan = size(traces, 1) : -1 : 1
     % plot and change data tips
     if nIntens > 1
         colororder(green_magenta_Cmap(nIntens))
+%         colororder(distinguishable_colors(nIntens))
     end
-    traces_avg_h = plot(protocol_info.Tstamps, traces_avg, 'LineWidth', 1);
+    traces_avg_h = plot(protocol_info.Tstamps, traces_avg, 'LineWidth', 2);
     for iIntens = 1 : nIntens
         traces_avg_h(iIntens).Tag = num2str(intens(iIntens));
         r = dataTipTextRow('intensity', ones(size(traces_avg_h(iIntens).XData)) * intens(iIntens));
@@ -214,63 +250,64 @@ for iChan = size(traces, 1) : -1 : 1
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % plot analysis results
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    if nStim > 1       
-        
-        if ~stp_legacy
+    amp_all_intens = [Amp{iChan,:}];
+    slope_all_intens = [Slope{iChan,:}];
+    % get how many traces are in each intens
+    nTraces = cellfun(@(x) size(x,2),traces(iChan,:));
+    intens_group = repelem(intens,nTraces);
+    for iDivision = 1:nAn_rows
+        dividend_stim = stim2plot(iDivision,1);
+        divisor_stim  = stim2plot(iDivision,2);
+        if ~isnan(divisor_stim)
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % new option: 2 plots per stimulation, simillar to input-output
+            % 2 plots per stimulation, simillar to input-output
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % get how many traces are in each intens
-            nTraces = cellfun(@(x) size(x,2),traces(iChan,:));
-            intens_group = repelem(intens,nTraces);
 
             % collect data & normalize it
-            amp_all_intens = [Amp{iChan,:}];
-            amp_fac_all    = amp_all_intens./amp_all_intens(1,:);
-            slope_all_intens = [Slope{iChan,:}];
-            slope_fac_all    = slope_all_intens./slope_all_intens(1,:);
+            amp_fac_all    = amp_all_intens./amp_all_intens(divisor_stim,:);
+            slope_fac_all    = slope_all_intens./slope_all_intens(divisor_stim,:);
 
-            for iStim = 2 : nStim
-                % create axes
-                amp_subplot = subplot(nStim, 2, 2*iStim - 1);
-                slope_subplot = subplot(nStim, 2, 2*iStim);
-                % If we number each element in an increasing rowwise manner, in a row-by-2 matrix:
-                % rows end in nRow*2, therefore they start with nRow*2-1
-                %   1 | 1, 2    ->  1*2-1, 1*2
-                %   2 | 3, 4    ->  2*2-1, 2*2
-                %   3 | 5, 6    ->  2*3-1, 3*2
+            % create axes
+            amp_subplot = subplot(nAn_rows + 1, 2, 2*iDivision + 1);
+            slope_subplot = subplot(nAn_rows + 1, 2, 2*iDivision + 2);
+            % If we number each element in an increasing rowwise manner, in a row-by-2 matrix:
+            % rows end in nRow*2, therefore they start with nRow*2-1
+            %   1 | 1, 2    ->  1*2-1, 1*2
+            %   2 | 3, 4    ->  2*2-1, 2*2
+            %   3 | 5, 6    ->  2*3-1, 3*2
+            % here I add +2 to make it start at secound row
 
+            % plot "input - output" for amplitude
+            %                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
+            boxplot(amp_subplot,amp_fac_all(dividend_stim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
 
-                % plot "input - output" for amplitude
-%                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
-                boxplot(amp_subplot,amp_fac_all(iStim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
+            % plot "input - output" for slope
+            %                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
+            boxplot(slope_subplot,slope_fac_all(dividend_stim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
 
-                % plot "input - output" for slope
-%                 boxes = boxchart(loop_subplot,intens_group,slope_fac_all(iStim,:),"GroupByColor",intens_group);
-                boxplot(slope_subplot,slope_fac_all(iStim,:),intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
-
-                % color boxplots 2 match avg_traces_plot colors
-                amp_box_edges = findobj(amp_subplot,'Tag','Box');
-                slope_box_edges = findobj(slope_subplot,'Tag','Box');
-                for iBox = nIntens:-1:1
-                    iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
-                    patch(amp_subplot,get(amp_box_edges(iBox),'XData'),get(amp_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
-                    patch(slope_subplot,get(slope_box_edges(iBox),'XData'),get(slope_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
-                end
-
-                % arrange graphics
-                amp_subplot.PositionConstraint = 'innerposition';      % Let the graphic part take more space
-                slope_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
-                xticklabels(amp_subplot,string(intens_sorted))   % for clearer view
-                xticklabels(slope_subplot,string(intens_sorted)) % for clearer view
-                ylabel(amp_subplot,{'Facilitation' sprintf('$\\frac{stim %d}{stim 1}$',iStim)},'Interpreter','latex') % 1 label is enough
-                fepsp_graphics(amp_subplot);
-                fepsp_graphics(slope_subplot);
+            % color boxplots 2 match avg_traces_plot colors
+            amp_box_edges = findobj(amp_subplot,'Tag','Box');
+            slope_box_edges = findobj(slope_subplot,'Tag','Box');
+            for iBox = nIntens:-1:1
+                iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
+                patch(amp_subplot,get(amp_box_edges(iBox),'XData'),get(amp_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+                patch(slope_subplot,get(slope_box_edges(iBox),'XData'),get(slope_box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
             end
-            xlabel(amp_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Amplitude'))
-            xlabel(slope_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Slope'))
-        else
+
+            % arrange graphics
+            amp_subplot.PositionConstraint = 'innerposition';      % Let the graphic part take more space
+            slope_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
+            xticklabels(amp_subplot,string(intens_sorted))   % for clearer view
+            xticklabels(slope_subplot,string(intens_sorted)) % for clearer view
+            ylabel(amp_subplot,{'Facilitation' sprintf('$\\frac{stim %d}{stim %d}$',dividend_stim,divisor_stim)},'Interpreter','latex') % 1 label is enough
+            fepsp_graphics(amp_subplot);
+            fepsp_graphics(slope_subplot);
+            
+            if iDivision == nAn_rows
+                xlabel(amp_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Amplitude'))
+                xlabel(slope_subplot,sprintf('\\fontsize{11}Intensity\n\\fontsize{16}Slope'))
+            end
+            %{
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % old option: create 1 subplot for each intensity, with both stimulations
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -332,65 +369,97 @@ for iChan = size(traces, 1) : -1 : 1
                 loop_subplot.PositionConstraint = 'innerposition';    % Let the graphic part take more space
                 loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
             end
-        end
-        
-    else
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % only 1 stimulation in protocol - show input-output
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % get how many traces are in each intens
-        nTraces = cellfun(@(x) size(x,2),traces(iChan,:));
-        intens_group = repelem(string(intens),nTraces);
-        
-        % plot input-output for amplitude
-        loop_subplot = subplot(2, 2, 3);
-        amp_all_intens = [Amp{iChan,:}];
-        boxplot(loop_subplot,amp_all_intens,intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
-        xticklabels(string(intens_sorted))
-        xlabel('Intensity [uA]')
-        ylabel('Amplidute [mV]')
-        title('Input/Output (Amplidute)')
-        
-        % color boxplots 2 match avg_traces_plot colors
-        box_edges = findobj(loop_subplot,'Tag','Box');
-        for iBox = nIntens:-1:1
-            iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
-            color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
-        end
-        loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
+            %}
 
-        % plot input-output for slope
-        loop_subplot = subplot(2, 2, 4);
-        slope_all_intens = [Slope{iChan,:}];
-        boxplot(loop_subplot,slope_all_intens,intens_group,'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
-        xlabel('Intensity [uA]')
-        ylabel('Slope [mV/ms]')
-        title(['Input/Output (Slope: ' slope_area_label ')'])
 
-        % color boxplots 2 match avg_traces_plot colors
-        box_edges = findobj(loop_subplot,'Tag','Box');
-        for iBox = nIntens:-1:1
-            iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
-            color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+        else
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % only 1 stimulation in protocol - show input-output
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+            % plot input-output for amplitude
+            loop_subplot = subplot(nAn_rows + 1, 2, 2*iDivision + 1);
+            boxplot(loop_subplot,amp_all_intens(dividend_stim,:),string(intens_group),'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
+            xticklabels(string(intens_sorted))
+            xlabel('Intensity [uA]')
+            ylabel({sprintf('Stim %d',dividend_stim),'Amplidute [mV]'})
+%             title('Input/Output (Amplidute)')
+
+            % color boxplots 2 match avg_traces_plot colors
+            box_edges = findobj(loop_subplot,'Tag','Box');
+            for iBox = nIntens:-1:1
+                iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
+                color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+            end
+
+            % plot the model below everything, if it exist
+            if ~isempty(Amp_mdl{iChan}{dividend_stim})
+                hold(loop_subplot,"on")
+                [p_res,p_res_CI] = predict(Amp_mdl{iChan}{dividend_stim},intens_sorted');
+                mdl_lines = plot(loop_subplot,intens_sorted,p_res,'b-',intens_sorted',p_res_CI,'b--');
+                uistack(mdl_lines,"bottom")
+            end
+            loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
+
+
+            % plot input-output for slope
+            loop_subplot = subplot(nAn_rows + 1, 2, 2*iDivision + 2);
+            boxplot(loop_subplot,slope_all_intens(dividend_stim,:),string(intens_group),'GroupOrder',string(intens_sorted),'Positions',intens_sorted)
+            xlabel('Intensity [uA]')
+            ylabel('Slope [mV/ms]')
+%             title(['Input/Output (Slope: ' slope_area_label ')'])
+
+            % color boxplots 2 match avg_traces_plot colors
+            box_edges = findobj(loop_subplot,'Tag','Box');
+            for iBox = nIntens:-1:1
+                iIntens = intens_order(end-iBox+1); % intensity is inversed & sorted between box & input intens order
+                color_box(iBox) = patch(get(box_edges(iBox),'XData'),get(box_edges(iBox),'YData'),traces_avg_h(iIntens).Color,'FaceAlpha',.5,'PickableParts','none');
+            end
+
+            % plot the model below everything, if it exist
+            if ~isempty(Slope_mdl{iChan}{dividend_stim})
+                hold(loop_subplot,"on")
+                [p_res,p_res_CI] = predict(Slope_mdl{iChan}{dividend_stim},intens_sorted');
+                mdl_lines = plot(loop_subplot,intens_sorted,p_res,'b-',intens_sorted,p_res_CI,'b--');
+                uistack(mdl_lines,"bottom")
+            end
+
+            loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
         end
-        loop_subplot = fepsp_graphics(loop_subplot);          % set graphics
     end
+    
+    % let user open graphs in a new fig, enlarged
+    all_ax = findobj(sumPlot(iChan),'Type','axes');
+    cm = uicontextmenu(sumPlot(iChan));
+    uimenu(cm,"Text","Open in new fig","MenuSelectedFcn",@full_fig);
+    
+    [all_ax.ContextMenu] = deal(cm);
+
+    % save
+    if saveFig
+        fprintf(['This is the time to make edits (such as moving the legends) before figure export.'...
+            '\ncontinue running the code (by F5) ones you are ready to export!\n'])
+        keyboard
+        basepath = pwd;
+        [~, basename] = fileparts(basepath);
+        figpath = fullfile(basepath, 'graphics', 'fepsp');
+        mkdir(figpath)
+        figname = fullfile(figpath, sprintf('%s_fepsp_results', basename));
+        export_fig(figname, '-tif', '-transparent', '-r300')
+        fprintf('Saved!\n')
+    end
+
 end
 
-% save
-if saveFig
-    fprintf(['This is the time to make edits (such as moving the legends) before figure export.'...
-        '\ncontinue running the code (by F5) ones you are ready to export!\n'])
-    keyboard
-    basepath = pwd;
-    [~, basename] = fileparts(basepath);
-    figpath = fullfile(basepath, 'graphics', 'fepsp');
-    mkdir(figpath)
-    figname = fullfile(figpath, sprintf('%s_fepsp_results', basename));
-    export_fig(figname, '-tif', '-transparent', '-r300')
-    fprintf('Saved!\n')
 end
 
+function full_fig(~,evt)
+    ax = evt.Source.Parent.Parent.CurrentAxes;
+    f = figure();
+    new_ax = copyobj(ax,f);
+    drawnow;
+    subplot(1,1,1,new_ax)
+    fepsp_graphics(f);
+    fepsp_graphics(new_ax);
 end
-
 % EOF

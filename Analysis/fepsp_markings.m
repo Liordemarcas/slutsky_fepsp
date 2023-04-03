@@ -115,8 +115,8 @@ p.addParameter('intens',        [],     @(x) validateattributes(x,{'numeric'},{'
 p.addParameter('base_path',     pwd,    @isfolder)
 p.addParameter('traces_xlim',   [],     @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
 p.addParameter('traces_ylim',   [],     @(x) (isnumeric(x) && numel(x)==2) || isempty(x))
-p.addParameter('dt',            2,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
-p.addParameter('max_jitter',    0.5,      @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}));
+p.addParameter('dt',            2,      @(x) validateattributes(x,{'numeric'},{'vector','nonnegative'}))
+p.addParameter('max_jitter',    0.5,    @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}));
 p.addParameter('fast_mark',     false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 p.addParameter('hold_dt',       false,  @(x) validateattributes(x,{'logical','numeric'},{'binary','scalar'}))
 
@@ -370,17 +370,25 @@ Tstamp_mat = repmat(protocol_info.Tstamps, 1, protocol_info.nStim);
 baseline_traces = mean(traces{Ch_button_val,traces_col}(protocol_info.baseline,:),1,'omitnan');
 baseline_avg_trace = mean(avg_traces(Ch_button_val,traces_col,protocol_info.baseline),'omitnan');
 
+limit_mat(:,1) = [
+    min(protocol_info.response.base(1,2),start_ind_base(1)) ; % let user placment override window
+    peak_ind_base(1:(end-1))' + max_ind_jit + 1];
+limit_mat(:,2) = [
+     start_ind_base(2:end)' - max_ind_jit - 1;
+     max(protocol_info.response.base(end,2),peak_ind_base(end))]; % let user placment override window
 % deal with position jitter (find point in window by max_ind_jit with
 % max distance from mean value of baseline)
 for iStim = protocol_info.nStim:-1:1
     % create jitter windows for start of the response and for peak:
-    jit_win_start = max(start_ind_base(iStim) - max_ind_jit, protocol_info.response.base(iStim,1)); % The max makes sure Start tolerance doesn't take stimulus artifact
+    jit_win_start = max(start_ind_base(iStim) - max_ind_jit, limit_mat(iStim,1)); % The max makes sure Start tolerance doesn't go before previus stimulus
     jit_win_end = min(start_ind_base(iStim) + max_ind_jit, peak_ind_base(iStim) - max_ind_jit - 1); % The min makes sure Start tolerance doesn't take after peak_ind
     start_jit_win = jit_win_start:jit_win_end;
-    
+    start_jit_win = start_jit_win(ismember(start_jit_win,protocol_info.response.win)); % make sure window stays in responce window - avoide artifact (by dt)
+
     jit_win_start = max(peak_ind_base(iStim) - max_ind_jit, start_ind_base(iStim) + max_ind_jit + 1); % The max makes sure End tolerance doesn't take before start_ind
-    jit_win_end = min(peak_ind_base(iStim) + max_ind_jit, protocol_info.response.base(iStim,2)); % The max makes sure End tolerance doesn't take next stimulus artifact
+    jit_win_end = min(peak_ind_base(iStim) + max_ind_jit, limit_mat(iStim,2)); % The min makes sure End tolerance doesn't go before past next stimulus
     peak_jit_win = jit_win_start:jit_win_end;
+    peak_jit_win = peak_jit_win(ismember(peak_jit_win,protocol_info.response.win)); % make sure window stays in responce window - avoide artifact (by dt)
     
     % find the maximal distance from mean baseline in all traces:
     % baseline_traces is a row vector, and inside each traces
@@ -860,7 +868,7 @@ base_path = marking_fig.UserData.base_path;
 marking_file = [base_path filesep base_name '_fepsp_markings.mat'];
 
 % save
-save(marking_file, 'markings', 'traces')
+save(marking_file, 'markings', 'traces','-v7.3')
 
 
 end

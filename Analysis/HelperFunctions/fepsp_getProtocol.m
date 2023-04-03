@@ -12,8 +12,9 @@ function protocol_info = fepsp_getProtocol(varargin)
 % INPUT (optional):
 %   fs         - numeric scalar. Sampling frequency of the 
 %                recorded data [Hz]. 
-%   dt         - non-negative scalar. Dead time between
-%                stimulus onset & earliest possible response [ms].
+%   dt         - non-negative vector or scalar. Dead time between
+%                stimulus onset & earliest possible response [ms], 
+%                for each stimuli.
 %                Used to omit stimulus artifact from analysis, by creating
 %                windows distanced from each stimuli start & end.
 %                Default: 2.
@@ -78,13 +79,13 @@ p.KeepUnmatched = true;
 
 p.addParameter('protocol_id',   [], @(x) validateattributes(x,{'string','char'},{'scalartext'}))
 p.addParameter('fs',            [], @(x) validateattributes(x,{'numeric'},{'scalar'}))
-p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'scalar','nonnegative'}))
+p.addParameter('dt',            2,  @(x) validateattributes(x,{'numeric'},{'vector'})) % {'scalar'}))
 
 p.parse(varargin{:});
 
 protocol_id     = p.Results.protocol_id;
 fs              = p.Results.fs;
-dt              = p.Results.dt;
+dt              = p.Results.dt(:);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % load or create protocol
@@ -110,13 +111,13 @@ switch protocol_id
         % collect protocol info from user
         AllPrompets = {sprintf('Protocol ID (leave empty to avoid saving protocol)\n(can''t be reserved words "custom" or "display"):'),...
             sprintf('Stimulation times [ms] (relative to recording start)\n(use spaces to separate the times):'),...
-            'Stimulus length [us]:',...
+            'Stimulus length [us] (use spaces to separate for each stimuli):',...
             'Recording length [ms]'};
         user_inputs = inputdlg(AllPrompets,'Make Custom Protocol');
         protocol_info = struct();
         protocol_info.protocol_id = user_inputs{1};
         protocol_info.stim_times = sort(str2double(split(user_inputs{2})));%[ms] %always convert to col vec
-        protocol_info.stim_length = str2double(user_inputs{3}); %[us]
+        protocol_info.stim_length = str2double(split(user_inputs{3})); %[us] %always convert to col vec
         protocol_info.rec_length = str2double(user_inputs{4}); %[ms]
         
         % validate numeric data - if NaN they were not parse right, they
@@ -138,6 +139,7 @@ switch protocol_id
             % the last one, give a window of 30 ms (arbitrary but usally enough)
             next_stim_starts = protocol_info.stim_times(2:end);
             next_stim_starts(end+1) = stim_ends(end) + min(30,protocol_info.rec_length);
+            next_stim_starts = next_stim_starts(:); % force col vec
         else
             % give an window of 30 ms after stimulus ends (arbitrary but usally enough)
             next_stim_starts = stim_ends + min(30,protocol_info.rec_length);
@@ -204,29 +206,45 @@ if ~isempty(fs)
     % numbers (that can be used as index) in important windows. Else leave
     % fields empty
     
+    % validate that there is dt for each stimuli. If there is only 1 dt, match
+    if numel(dt) == 1
+        dt = repmat(dt,protocol_info.nStim,1);
+    elseif numel(dt) ~= protocol_info.nStim
+        error("dt must be scalar or same number as stimuli in protocol (%d)",protocol_info.nStim)
+    end
+
+    % make sure dt doesn't catch all the area between stimuli 
+    % (else this stimuli does not matter)
+    if any( (diff(protocol_info.pstim_win,1,2) - dt) < 0)
+        error("dt must always be smaller than the diffrence in the stimuli given")
+    end
+
+    
     % define a window of expected response - 
     % sample numbers that are far by dt from each stimulus end / start
-    protocol_info.response.base = round([protocol_info.pstim_win(:,1)+dt,protocol_info.pstim_win(:,2)-dt] * fs / 1000);
+    protocol_info.response.base = round([protocol_info.pstim_win(:,1)+dt(:),protocol_info.pstim_win(:,2)-[dt(2:end);0]] * fs / 1000);
     
     % create a vector of sample numbers capturing all response windows
     for iStim = 1:protocol_info.nStim
         protocol_info.response.win = [protocol_info.response.win, protocol_info.response.base(iStim,1):protocol_info.response.base(iStim,2)];
     end
     
-    % create window to display (xlim) - from 1 dt before first stimulus
-    % starts until dt after last stimulus ends
-%     protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)-protocol_info.stim_times(1)];
-    protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)];
-    
-    % get all the sample numbers for the baseline - 1 to dt before first stimulation
-    protocol_info.baseline = 1:round((protocol_info.stim_times(1)-dt)* fs / 1000);
-    
-    % create time stamps
+        % create time stamps
 %     protocol_info.Tstamps = -protocol_info.stim_times(1) :...
 %         (1 / fs) * 1000 : (protocol_info.rec_length - protocol_info.stim_times(1));
 %     protocol_info.Tstamps = protocol_info.Tstamps(1 : end - 1)';
     protocol_info.Tstamps = ( (1/fs)*1000 ) : ( (1/fs)*1000 ) : protocol_info.rec_length;
     protocol_info.Tstamps = ( protocol_info.Tstamps - protocol_info.stim_times(1) )';
+
+    % create window to display (xlim) - from 1 dt before first stimulus
+    % starts until dt after last stimulus ends
+%     protocol_info.traces_xlim = [-dt, protocol_info.pstim_win(end,2)-protocol_info.stim_times(1)];
+    protocol_info.traces_xlim = [-dt(1),protocol_info.Tstamps(protocol_info.response.base(end,2))];
+    
+    % get all the sample numbers for the baseline - 1 to dt before first stimulation
+    protocol_info.baseline = 1:round((protocol_info.stim_times(1)-dt(1))* fs / 1000);
+    
+
 end
 
 end
